@@ -13,6 +13,12 @@ class PutSpreadConfig:
     require_20_sma_above_200_sma: bool = True
     require_price_below_20_sma: bool = False
 
+    # Trend evaluation weights
+    trend_weight_sma_alignment: int = 40
+    trend_weight_price_above_200: int = 25
+    trend_weight_price_above_20: int = 20
+    trend_weight_trend_confirmation: int = 15
+
     # Option expiration rules
     minimum_dte: int = 30
     maximum_dte: int = 45
@@ -38,8 +44,6 @@ class PutSpreadConfig:
     maximum_risk_per_trade: float = 500.00
     maximum_open_positions: int = 5
 
-    allowed_spread_widths: tuple[float, ...] = (5.0,)
-
     def validate(self) -> None:
         """
         Validate all configuration values.
@@ -49,7 +53,9 @@ class PutSpreadConfig:
         """
 
         if self.minimum_dte < 0:
-            raise ValueError("Minimum DTE cannot be negative.")
+            raise ValueError(
+                "Minimum DTE cannot be negative."
+            )
 
         if self.maximum_dte < self.minimum_dte:
             raise ValueError(
@@ -72,7 +78,9 @@ class PutSpreadConfig:
             )
 
         if self.minimum_bid < 0:
-            raise ValueError("Minimum bid cannot be negative.")
+            raise ValueError(
+                "Minimum bid cannot be negative."
+            )
 
         if self.minimum_open_interest < 0:
             raise ValueError(
@@ -80,18 +88,19 @@ class PutSpreadConfig:
             )
 
         if self.minimum_volume < 0:
-            raise ValueError("Minimum volume cannot be negative.")
+            raise ValueError(
+                "Minimum volume cannot be negative."
+            )
 
         if self.maximum_bid_ask_spread < 0:
             raise ValueError(
                 "Maximum bid-ask spread cannot be negative."
             )
 
-        if self.spread_width <= 0:
-            raise ValueError("Spread width must be greater than zero.")
-
         if self.minimum_credit < 0:
-            raise ValueError("Minimum credit cannot be negative.")
+            raise ValueError(
+                "Minimum credit cannot be negative."
+            )
 
         if not 0 < self.profit_target_percent <= 100:
             raise ValueError(
@@ -105,7 +114,9 @@ class PutSpreadConfig:
             )
 
         if self.exit_dte < 0:
-            raise ValueError("Exit DTE cannot be negative.")
+            raise ValueError(
+                "Exit DTE cannot be negative."
+            )
 
         if self.maximum_risk_per_trade <= 0:
             raise ValueError(
@@ -116,12 +127,36 @@ class PutSpreadConfig:
             raise ValueError(
                 "Maximum open positions must be greater than zero."
             )
+
         if not self.allowed_spread_widths:
             raise ValueError(
                 "At least one spread width is required."
             )
-        if any(width <= 0 for width in self.allowed_spread_widths):
-            raise ValueError("Spread widths must be greater than zero.")
+
+        if any(
+            width <= 0
+            for width in self.allowed_spread_widths
+        ):
+            raise ValueError(
+                "Spread widths must be greater than zero."
+            )
+
+        trend_weights = (
+            self.trend_weight_sma_alignment,
+            self.trend_weight_price_above_200,
+            self.trend_weight_price_above_20,
+            self.trend_weight_trend_confirmation,
+        )
+
+        if any(weight < 0 for weight in trend_weights):
+            raise ValueError(
+                "Trend evaluation weights cannot be negative."
+            )
+
+        if sum(trend_weights) != 100:
+            raise ValueError(
+                "Trend evaluation weights must total 100."
+            )
 
 
 DEFAULT_STRATEGIES = {

@@ -1,7 +1,25 @@
+# Virtual environment
 .venv/
+
+# Python
 __pycache__/
 *.pyc
+
+# Secrets
 .env
+token.json
+
+# Runtime data
 logs/
 data/
-token.json
+
+# IDE
+.vscode/
+
+# Test cache
+.pytest_cache/
+.mypy_cache/
+
+# OS files
+.DS_Store
+Thumbs.db
