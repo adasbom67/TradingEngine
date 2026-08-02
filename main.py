@@ -33,6 +33,12 @@ from app.watchlists.manager import WatchlistManager
 from app.daily.service import DailyRecommendationService
 from app.reports.daily_recommendation_report import DailyRecommendationReport
 from app.scheduling.scheduler import DailyScheduler, ScheduledJob
+from app.config.runtime_config import RuntimeConfigLoader
+from app.operations.health import HealthChecker
+from app.operations.startup import StartupValidator
+from app.operations.diagnostics import DiagnosticCollector
+from app.operations.deployment import DeploymentVerifier
+from app.operations.lifecycle import RecoveryCheckpoint
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -182,6 +188,31 @@ def build_parser() -> argparse.ArgumentParser:
     schedule_sub.add_parser("run-due")
     schedule_loop = schedule_sub.add_parser("loop")
     schedule_loop.add_argument("--poll-seconds", type=int, default=60)
+
+    config_cmd = subparsers.add_parser("config", help="Validate centralized runtime configuration")
+    config_cmd.add_argument("--file", default="config/runtime.json")
+    config_sub = config_cmd.add_subparsers(dest="config_command")
+    config_sub.add_parser("validate")
+
+    health = subparsers.add_parser("health", help="Run production-readiness health checks")
+    health.add_argument("--config", default="config/runtime.json")
+
+    version = subparsers.add_parser("version", help="Show the TradingEngine version")
+    version.add_argument("--file", default="VERSION")
+
+    diagnostics = subparsers.add_parser("diagnostics", help="Write an operational diagnostics snapshot")
+    diagnostics.add_argument("--config", default="config/runtime.json")
+    diagnostics.add_argument("--output-directory", default="reports/diagnostics")
+
+    recovery = subparsers.add_parser("recovery", help="Inspect or clear the recovery checkpoint")
+    recovery.add_argument("--config", default="config/runtime.json")
+    recovery_sub = recovery.add_subparsers(dest="recovery_command")
+    recovery_sub.add_parser("status")
+    recovery_sub.add_parser("clear")
+
+    verify = subparsers.add_parser("verify-deployment", help="Compile the application and run the test suite")
+    verify.add_argument("--project-root", default=".")
+    verify.add_argument("--skip-tests", action="store_true")
     return parser
 
 
@@ -564,6 +595,72 @@ def run_scheduler(args: argparse.Namespace) -> int:
         return 0
     raise ValueError("A scheduler subcommand is required.")
 
+
+
+def run_config(args: argparse.Namespace) -> int:
+    if args.config_command != "validate":
+        raise ValueError("A config subcommand is required.")
+    config = RuntimeConfigLoader(args.file).load()
+    print("Runtime configuration is valid.")
+    print(f"Environment: {config.environment}")
+    print(f"Version: {config.version}")
+    print(f"Maximum open positions: {config.risk.maximum_open_positions}")
+    return 0
+
+
+def run_health(args: argparse.Namespace) -> int:
+    load_dotenv()
+    result = StartupValidator(args.config).run()
+    print(f"TradingEngine Health Check (v{result.config.version})")
+    for check in result.health.checks:
+        print(f"{check.status.value:<5} {check.name:<24} {check.message}")
+    print(f"Log: {result.log_path}")
+    print(f"Audit: {result.audit_path}")
+    return result.health.exit_code
+
+
+def run_version(args: argparse.Namespace) -> int:
+    from pathlib import Path
+    path = Path(args.file)
+    if not path.exists():
+        raise ValueError(f"Version file not found: {path}")
+    print(path.read_text(encoding="utf-8").strip())
+    return 0
+
+
+def run_diagnostics(args: argparse.Namespace) -> int:
+    config = RuntimeConfigLoader(args.config).load()
+    collector = DiagnosticCollector()
+    report = collector.collect(config)
+    path = collector.write(report, args.output_directory)
+    print(report.to_json())
+    print(f"Saved diagnostics: {path}")
+    return 0
+
+
+def run_recovery(args: argparse.Namespace) -> int:
+    config = RuntimeConfigLoader(args.config).load()
+    checkpoint = RecoveryCheckpoint(config.resilience.recovery_checkpoint_file)
+    if args.recovery_command == "status":
+        payload = checkpoint.load()
+        print("No recovery checkpoint." if payload is None else __import__("json").dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if args.recovery_command == "clear":
+        checkpoint.clear()
+        print("Recovery checkpoint cleared.")
+        return 0
+    raise ValueError("A recovery subcommand is required.")
+
+
+def run_verify_deployment(args: argparse.Namespace) -> int:
+    result = DeploymentVerifier().verify(args.project_root, run_tests=not args.skip_tests)
+    print(f"Compilation: {'PASS' if result.compilation_ok else 'FAIL'}")
+    print(f"Tests: {'PASS' if result.tests_ok else 'FAIL'}")
+    if result.test_output:
+        print(result.test_output)
+    return 0 if result.successful else 1
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -585,6 +682,18 @@ def main() -> int:
         return run_daily_report(args)
     if args.command == "scheduler":
         return run_scheduler(args)
+    if args.command == "config":
+        return run_config(args)
+    if args.command == "health":
+        return run_health(args)
+    if args.command == "version":
+        return run_version(args)
+    if args.command == "diagnostics":
+        return run_diagnostics(args)
+    if args.command == "recovery":
+        return run_recovery(args)
+    if args.command == "verify-deployment":
+        return run_verify_deployment(args)
     parser.print_help()
     return 0
 

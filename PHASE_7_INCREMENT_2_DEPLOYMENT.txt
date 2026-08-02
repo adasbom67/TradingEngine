@@ -1,0 +1,23 @@
+TradingEngine Phase 7 Increment 2 (v0.9.2)
+
+Deploy on branch: develop
+
+Preserve local files:
+- .env
+- token.json
+- data/
+- logs/
+- reports/
+
+Verification after deployment:
+1. pytest -q
+2. python main.py version
+3. python main.py health
+4. python main.py diagnostics
+5. python main.py recovery status
+6. python main.py verify-deployment --skip-tests
+
+Expected local test count: prior 145 tests plus 6 new tests = 151 tests.
+The full suite must be confirmed in the user's Windows environment because the
+packaging environment does not include schwab-py. Focused Phase 7 verification:
+13 tests passed; Python compilation passed.

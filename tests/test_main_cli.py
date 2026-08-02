@@ -44,3 +44,13 @@ def test_paper_scan_command_parses_symbols_and_quantity():
     assert args.symbols == ["SPY", "QQQ"]
     assert args.strategy == "Conservative"
     assert args.quantity == 2
+
+
+def test_operations_commands_parse():
+    parser = build_parser()
+    config = parser.parse_args(["config", "--file", "runtime.json", "validate"])
+    assert config.config_command == "validate"
+    health = parser.parse_args(["health", "--config", "runtime.json"])
+    assert health.config == "runtime.json"
+    version = parser.parse_args(["version", "--file", "VERSION"])
+    assert version.file == "VERSION"

@@ -15,22 +15,36 @@ venv/
 env/
 
 # -----------------------------------------------------
-# Secrets (NEVER commit)
+# Secrets
 # -----------------------------------------------------
 .env
 .env.*
 token.json
 
 # -----------------------------------------------------
-# Runtime data (generated locally)
+# Runtime data
 # -----------------------------------------------------
-logs/
 data/
+logs/
 
 # -----------------------------------------------------
-# Generated reports and exports
+# Generated reports
 # -----------------------------------------------------
-reports/
+reports/**
+
+# Keep the reports folder structure in Git
+!reports/
+!reports/.gitkeep
+!reports/daily/
+!reports/daily/.gitkeep
+!reports/diagnostics/
+!reports/diagnostics/.gitkeep
+!reports/paper/
+!reports/paper/.gitkeep
+
+# -----------------------------------------------------
+# Generated exports and temporary files
+# -----------------------------------------------------
 *.csv
 *.log
 *.tmp
@@ -50,7 +64,7 @@ htmlcov/
 .idea/
 
 # -----------------------------------------------------
-# Operating System
+# Operating system
 # -----------------------------------------------------
 .DS_Store
 Thumbs.db
