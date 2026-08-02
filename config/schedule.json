@@ -1,0 +1,15 @@
+{
+  "timezone": "America/New_York",
+  "jobs": [
+    {
+      "name": "morning-report",
+      "at": "09:45",
+      "weekdays_only": true
+    },
+    {
+      "name": "afternoon-report",
+      "at": "15:45",
+      "weekdays_only": true
+    }
+  ]
+}

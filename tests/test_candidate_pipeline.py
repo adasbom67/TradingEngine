@@ -30,3 +30,21 @@ def test_full_pipeline_filters_builds_evaluates_and_ranks():
     assert ranked[0].score == 100
     assert ranked[0].rank == 1
     assert ranked[0].warnings == []
+
+
+def test_pipeline_assigns_explicit_decision():
+    puts = [
+        create_option(500, bid=1.50, ask=1.60, delta=-0.20),
+        create_option(495, bid=0.70, ask=0.80, delta=-0.18),
+    ]
+    chain = OptionChain("SPY", 605.0, puts)
+    pipeline = CandidatePipeline(SpreadEvaluator([TrendEvaluator()]))
+
+    ranked = pipeline.run(
+        chain=chain,
+        price_snapshot=create_price_snapshot(),
+        trend_analysis=TrendAnalysis(passed=True, score=100),
+        config=PutSpreadConfig(minimum_credit=0.50),
+    )
+
+    assert ranked[0].decision in {"TRADE", "WATCH", "PASS"}

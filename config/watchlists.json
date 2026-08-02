@@ -1,0 +1,19 @@
+{
+  "default": "core",
+  "watchlists": {
+    "core": [
+      "SPY",
+      "QQQ",
+      "IWM",
+      "DIA"
+    ],
+    "sectors": [
+      "XLF",
+      "XLK",
+      "XLE",
+      "XLI",
+      "SMH",
+      "TLT"
+    ]
+  }
+}

@@ -54,3 +54,16 @@ class BullPutSpread:
             return 0
 
         return self.max_profit / self.max_loss
+
+    @property
+    def return_on_risk(self) -> float:
+        """Return maximum profit divided by maximum loss."""
+        if self.max_loss <= 0:
+            return 0.0
+        return self.max_profit / self.max_loss
+
+    @property
+    def breakeven(self) -> float:
+        """Expiration breakeven price for the short put spread."""
+        return self.short_put.strike - self.credit
+
