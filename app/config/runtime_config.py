@@ -94,7 +94,7 @@ class ResilienceSettings:
 @dataclass(frozen=True)
 class RuntimeConfig:
     environment: str = "development"
-    version: str = "0.9.2"
+    version: str = "0.9.3"
     logging: LoggingSettings = field(default_factory=LoggingSettings)
     paths: PathSettings = field(default_factory=PathSettings)
     risk: RiskSettings = field(default_factory=RiskSettings)
@@ -116,7 +116,7 @@ class RuntimeConfig:
     def from_mapping(cls, payload: dict[str, Any]) -> "RuntimeConfig":
         config = cls(
             environment=str(payload.get("environment", "development")),
-            version=str(payload.get("version", "0.9.2")),
+            version=str(payload.get("version", "0.9.3")),
             logging=LoggingSettings(**payload.get("logging", {})),
             paths=PathSettings(**payload.get("paths", {})),
             risk=RiskSettings(**payload.get("risk", {})),

@@ -1,82 +1,28 @@
-# =====================================================
-# TradingEngine - Git Ignore
-# =====================================================
-
-# -----------------------------------------------------
-# Python
-# -----------------------------------------------------
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Virtual environments
+# Virtual environment
 .venv/
-venv/
-env/
 
-# -----------------------------------------------------
+# Python
+__pycache__/
+*.pyc
+
 # Secrets
-# -----------------------------------------------------
 .env
-.env.*
 token.json
 
-# -----------------------------------------------------
 # Runtime data
-# -----------------------------------------------------
-data/
 logs/
+data/
 
-# -----------------------------------------------------
-# Generated reports
-# -----------------------------------------------------
-reports/**
+# IDE
+.vscode/
 
-# Keep the reports folder structure in Git
-!reports/
-!reports/.gitkeep
-!reports/daily/
-!reports/daily/.gitkeep
-!reports/diagnostics/
-!reports/diagnostics/.gitkeep
-!reports/paper/
-!reports/paper/.gitkeep
-
-# -----------------------------------------------------
-# Generated exports and temporary files
-# -----------------------------------------------------
-*.csv
-*.log
-*.tmp
-
-# -----------------------------------------------------
-# Testing
-# -----------------------------------------------------
+# Test cache
 .pytest_cache/
 .mypy_cache/
-.coverage
-htmlcov/
 
-# -----------------------------------------------------
-# IDE / Editor
-# -----------------------------------------------------
-.vscode/
-.idea/
-
-# -----------------------------------------------------
-# Operating system
-# -----------------------------------------------------
+# OS files
 .DS_Store
 Thumbs.db
-
-# -----------------------------------------------------
-# Build / Packaging
-# -----------------------------------------------------
-build/
-dist/
-*.egg-info/
-
-# -----------------------------------------------------
-# Jupyter
-# -----------------------------------------------------
-.ipynb_checkpoints/
+# Local paper-trading state
+data/paper_account.json
+data/paper_account.json.tmp

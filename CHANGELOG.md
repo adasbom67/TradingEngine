@@ -35,3 +35,9 @@
 
 ### Changed
 - Runtime configuration now includes resilience and log-rotation settings.
+
+## 0.9.3
+- Completed Phase 7 production readiness.
+- Added centralized configuration service and execution metrics.
+- Added installation, upgrade, backup, and deployment workflows.
+- Consolidated long-term project documentation under `docs/`.

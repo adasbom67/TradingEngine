@@ -1,0 +1,11 @@
+TradingEngine v0.9.3 — Phase 7 Complete
+
+1. Preserve .env, token.json, data/, logs/, and reports/.
+2. Replace project files with this package.
+3. Run: pytest -q
+4. Run: python main.py version
+5. Run: python main.py health
+6. Run: python verify.py
+7. Commit to develop only after local verification.
+
+Next development phase: Phase 8 live-order safety foundation, beginning with account discovery and order preview only.
