@@ -1,0 +1,10 @@
+TradingEngine v0.10.3 Web Console
+
+1. Preserve .env, token.json, data, logs, and reports.
+2. Replace project files.
+3. Run: pip install Flask==3.1.3
+4. Run: pytest -q
+5. Run: python web.py
+6. Open: http://127.0.0.1:8000
+
+Live order submission is not implemented.

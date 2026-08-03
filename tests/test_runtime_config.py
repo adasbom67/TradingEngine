@@ -26,3 +26,23 @@ def test_runtime_config_requires_object_root(tmp_path):
     path.write_text("[]")
     with pytest.raises(RuntimeConfigError, match="root must be an object"):
         RuntimeConfigLoader(path).load()
+
+
+def test_paper_trading_configuration_is_independent(tmp_path):
+    import json
+    from app.config.runtime_config import RuntimeConfigLoader
+
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps({
+        "environment": "paper",
+        "version": "0.10.2",
+        "paper_trading": {
+            "initial_cash": 250000.0,
+            "ledger_file": "data/custom_paper.json",
+            "capital_source": "fixed"
+        }
+    }), encoding="utf-8")
+    config = RuntimeConfigLoader(path).load()
+    assert config.paper_trading.initial_cash == 250000.0
+    assert config.paper_trading.ledger_file == "data/custom_paper.json"
+    assert not hasattr(config.trading, "account_hash")

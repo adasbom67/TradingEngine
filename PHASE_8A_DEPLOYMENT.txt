@@ -1,0 +1,20 @@
+TradingEngine v0.10.0 Phase 8A Deployment
+
+1. Confirm you are on the develop branch.
+2. Preserve .env, token.json, data, logs, and reports.
+3. Copy the package contents into the repository and allow source files to merge/replace.
+4. Run: pytest -q
+5. Run: python main.py version
+6. Run: python main.py health
+7. Run read-only commands one at a time:
+   python main.py trade account
+   python main.py trade positions
+   python main.py trade orders
+   python main.py trade reconcile
+8. Order-plan commands require a current TRADE candidate:
+   python main.py trade plan SPY
+   python main.py trade validate SPY
+
+If more than one Schwab account is linked, set trading.account_hash in config/runtime.json to the desired hash returned internally by Schwab. Do not enter the plain account number.
+
+SAFETY: v0.10.0 cannot submit, cancel, or replace orders.

@@ -1,0 +1,12 @@
+TradingEngine v0.10.3 Web Health Import Hotfix
+
+Fixes:
+- Replaces invalid HealthCheckService import with existing HealthChecker.
+- Uses HealthChecker(config).run() in the /health route.
+- Adds a regression test for the health page.
+
+Deployment:
+1. Extract this ZIP into the TradingEngine project root.
+2. Allow app/web/app.py and tests/test_web_console.py to be replaced.
+3. Run: pytest -q
+4. Run: python web.py

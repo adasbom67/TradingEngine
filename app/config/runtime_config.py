@@ -92,13 +92,47 @@ class ResilienceSettings:
 
 
 @dataclass(frozen=True)
+class TradingSettings:
+    execution_mode: str = "dry_run"
+    approved_symbols: tuple[str, ...] = ("SPY", "QQQ", "IWM", "DIA")
+    live_submission_enabled: bool = False
+
+    def validate(self) -> None:
+        if self.execution_mode not in {"paper", "dry_run", "live"}:
+            raise RuntimeConfigError("trading.execution_mode must be paper, dry_run, or live.")
+        if self.execution_mode == "live" or self.live_submission_enabled:
+            raise RuntimeConfigError("Live submission is unavailable in v0.10.2.")
+        if not self.approved_symbols:
+            raise RuntimeConfigError("trading.approved_symbols cannot be empty.")
+
+
+@dataclass(frozen=True)
+class PaperTradingSettings:
+    initial_cash: float = 100_000.0
+    ledger_file: str = "data/paper_account.json"
+    capital_source: str = "fixed"
+
+    def validate(self) -> None:
+        if self.initial_cash <= 0:
+            raise RuntimeConfigError("paper_trading.initial_cash must be greater than zero.")
+        if not self.ledger_file.strip():
+            raise RuntimeConfigError("paper_trading.ledger_file cannot be blank.")
+        if self.capital_source not in {"fixed", "schwab_snapshot"}:
+            raise RuntimeConfigError(
+                "paper_trading.capital_source must be fixed or schwab_snapshot."
+            )
+
+
+@dataclass(frozen=True)
 class RuntimeConfig:
     environment: str = "development"
-    version: str = "0.9.3"
+    version: str = "0.10.2"
     logging: LoggingSettings = field(default_factory=LoggingSettings)
     paths: PathSettings = field(default_factory=PathSettings)
     risk: RiskSettings = field(default_factory=RiskSettings)
     resilience: ResilienceSettings = field(default_factory=ResilienceSettings)
+    trading: TradingSettings = field(default_factory=TradingSettings)
+    paper_trading: PaperTradingSettings = field(default_factory=PaperTradingSettings)
 
     def validate(self) -> None:
         if self.environment not in {"development", "paper", "production", "test"}:
@@ -111,16 +145,20 @@ class RuntimeConfig:
         self.paths.validate()
         self.risk.validate()
         self.resilience.validate()
+        self.trading.validate()
+        self.paper_trading.validate()
 
     @classmethod
     def from_mapping(cls, payload: dict[str, Any]) -> "RuntimeConfig":
         config = cls(
             environment=str(payload.get("environment", "development")),
-            version=str(payload.get("version", "0.9.3")),
+            version=str(payload.get("version", "0.10.2")),
             logging=LoggingSettings(**payload.get("logging", {})),
             paths=PathSettings(**payload.get("paths", {})),
             risk=RiskSettings(**payload.get("risk", {})),
             resilience=ResilienceSettings(**payload.get("resilience", {})),
+            trading=TradingSettings(**{**payload.get("trading", {}), "approved_symbols": tuple(payload.get("trading", {}).get("approved_symbols", ("SPY", "QQQ", "IWM", "DIA")))}),
+            paper_trading=PaperTradingSettings(**payload.get("paper_trading", {})),
         )
         config.validate()
         return config

@@ -40,6 +40,15 @@ from app.operations.diagnostics import DiagnosticCollector
 from app.operations.deployment import DeploymentVerifier
 from app.operations.lifecycle import RecoveryCheckpoint
 
+from datetime import datetime, timedelta, timezone
+from app.brokers.schwab_trading.client import SchwabTradingClient
+from app.trading.order_plan import BullPutOrderPlanBuilder
+from app.trading.reconciliation import ReadOnlyReconciliationService
+from app.trading.service import DryRunTradingService
+from app.trading.validation import OrderPlanValidator
+from app.trading.account_selection import AccountSelectionRequired, select_account
+from app.reports.trading_report import TradingReport
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="TradingEngine live scanner")
@@ -213,6 +222,23 @@ def build_parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser("verify-deployment", help="Compile the application and run the test suite")
     verify.add_argument("--project-root", default=".")
     verify.add_argument("--skip-tests", action="store_true")
+
+    trade = subparsers.add_parser("trade", help="Read-only Schwab trading and dry-run order planning")
+    trade.add_argument("--config", default="config/runtime.json")
+    trade_sub = trade.add_subparsers(dest="trade_command")
+    trade_sub.add_parser("account")
+    trade_sub.add_parser("positions")
+    trade_orders = trade_sub.add_parser("orders")
+    trade_orders.add_argument("--days", type=int, default=30)
+    trade_sub.add_parser("reconcile")
+    trade_plan = trade_sub.add_parser("plan")
+    trade_plan.add_argument("symbol")
+    trade_plan.add_argument("--strategy", choices=tuple(DEFAULT_STRATEGIES), default="Balanced")
+    trade_plan.add_argument("--quantity", type=int, default=1)
+    trade_validate = trade_sub.add_parser("validate")
+    trade_validate.add_argument("symbol")
+    trade_validate.add_argument("--strategy", choices=tuple(DEFAULT_STRATEGIES), default="Balanced")
+    trade_validate.add_argument("--quantity", type=int, default=1)
     return parser
 
 
@@ -661,6 +687,53 @@ def run_verify_deployment(args: argparse.Namespace) -> int:
     return 0 if result.successful else 1
 
 
+
+def _select_trade_account(broker: SchwabTradingClient):
+    selection = select_account(broker.get_accounts())
+    return selection.account
+
+def _build_live_trade_plan(symbol: str, strategy: str, quantity: int):
+    if quantity <= 0:
+        raise ValueError("--quantity must be greater than zero.")
+    config = DEFAULT_STRATEGIES[strategy]
+    market_data = SchwabMarketDataClient(create_schwab_client())
+    scanner = LiveCandidateScanner(market_data=market_data, pipeline=create_default_candidate_pipeline(), market_analysis=MarketAnalysisBuilder())
+    candidates = scanner.scan_live(symbol=symbol.strip().upper(), config=config)
+    eligible = [c for c in candidates if c.decision == "TRADE"]
+    if not eligible:
+        raise ValueError(f"No TRADE candidate is currently available for {symbol.strip().upper()}.")
+    return BullPutOrderPlanBuilder().build_entry(eligible[0], quantity=quantity)
+
+def run_trade(args: argparse.Namespace) -> int:
+    load_dotenv()
+    runtime = RuntimeConfigLoader(args.config).load()
+    broker = SchwabTradingClient(create_schwab_client())
+    report = TradingReport()
+    try:
+        account = _select_trade_account(broker)
+    except AccountSelectionRequired as exc:
+        print(exc.user_message())
+        return 2
+    if args.trade_command == "account":
+        print(report.account(broker.get_account(account.account_hash))); return 0
+    if args.trade_command == "positions":
+        print(report.positions(broker.get_positions(account.account_hash))); return 0
+    if args.trade_command == "orders":
+        if args.days <= 0: raise ValueError("--days must be greater than zero.")
+        now = datetime.now(timezone.utc)
+        print(report.orders(broker.get_orders(account.account_hash, from_time=now-timedelta(days=args.days), to_time=now))); return 0
+    if args.trade_command == "reconcile":
+        print(report.reconciliation(ReadOnlyReconciliationService().reconcile(broker, account.account_hash))); return 0
+    if args.trade_command in {"plan", "validate"}:
+        symbol=args.symbol.strip().upper()
+        if symbol not in runtime.trading.approved_symbols:
+            raise ValueError(f"{symbol} is not in trading.approved_symbols.")
+        plan=_build_live_trade_plan(symbol,args.strategy,args.quantity)
+        if args.trade_command == "plan": print(report.plan(plan)); return 0
+        result=DryRunTradingService(broker,OrderPlanValidator()).execute(account.account_hash,plan)
+        print(report.dry_run(result)); return 0 if result.validation.valid else 1
+    raise ValueError("A trade subcommand is required.")
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -694,6 +767,8 @@ def main() -> int:
         return run_recovery(args)
     if args.command == "verify-deployment":
         return run_verify_deployment(args)
+    if args.command == "trade":
+        return run_trade(args)
     parser.print_help()
     return 0
 

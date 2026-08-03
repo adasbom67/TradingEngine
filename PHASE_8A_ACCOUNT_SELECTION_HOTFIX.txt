@@ -1,0 +1,16 @@
+TradingEngine Phase 8A v0.10.1
+
+After deployment, add the selected account hash to the local .env file:
+
+SCHWAB_LIVE_ACCOUNT_HASH=<full hash>
+
+Do not place the hash in config/runtime.json.
+Do not commit .env.
+
+Verify:
+pytest -q
+python main.py version
+python main.py trade account
+python main.py trade positions
+python main.py trade orders
+python main.py trade reconcile

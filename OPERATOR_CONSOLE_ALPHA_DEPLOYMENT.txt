@@ -1,0 +1,9 @@
+1. Deploy on develop only.
+2. Copy package contents into the TradingEngine root.
+3. Keep .env, token.json, data, logs, and reports.
+4. pip install -r requirements-operator-console.txt
+5. pytest -q
+6. python operator_api.py
+7. In another terminal: cd operator-console; npm install; npm run dev
+8. Open http://127.0.0.1:5173
+9. Do not expose either server outside localhost.

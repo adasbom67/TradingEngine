@@ -1,0 +1,6 @@
+Phase 8A v0.10.2
+
+Live Schwab account: SCHWAB_LIVE_ACCOUNT_HASH in .env.
+Paper account: independent local ledger in data/paper_account.json.
+No account hash belongs in config/runtime.json or Git.
+No live order submission capability is included.

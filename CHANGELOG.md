@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.10.2
+
+- Hardened multi-account Schwab selection.
+- Added `SCHWAB_LIVE_ACCOUNT_HASH` environment precedence.
+- Added masked account-selection guidance without tracebacks.
+- Added tests preventing full account-hash disclosure.
+- Live submission remains unavailable.
+
+# v0.10.0
+
+Phase 8A broker readiness, read-only Schwab trading data, order planning, validation, and dry run. No live submission.
+
+# Changelog
+
 ## [0.9.1] - Unreleased
 
 ### Added

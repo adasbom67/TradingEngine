@@ -1,6 +1,6 @@
 {
   "environment": "paper",
-  "version": "0.9.3",
+  "version": "0.10.3",
   "logging": {
     "level": "INFO",
     "directory": "logs",
@@ -30,5 +30,20 @@
     "retry_maximum_delay_seconds": 5.0,
     "instance_lock_file": "data/tradingengine.lock",
     "recovery_checkpoint_file": "data/recovery_checkpoint.json"
+  },
+  "trading": {
+    "execution_mode": "dry_run",
+    "approved_symbols": [
+      "SPY",
+      "QQQ",
+      "IWM",
+      "DIA"
+    ],
+    "live_submission_enabled": false
+  },
+  "paper_trading": {
+    "initial_cash": 100000.0,
+    "ledger_file": "data/paper_account.json",
+    "capital_source": "fixed"
   }
 }

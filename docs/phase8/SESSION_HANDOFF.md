@@ -1,33 +1,26 @@
 # Phase 8 Session Handoff
 
-## Current stable baseline
+## Current release candidate
 
-- Version: `v0.9.3`
-- Stable branch: `main`
-- Verified tests: 157
-- Phase 7: complete
-- Live submission: not implemented and must remain disabled
+- Version: `v0.10.0`
+- Active branch: `develop`
+- Phase 8A: implemented
+- Expected tests after deployment: 166
+- Live submission: not implemented and not reachable
 
-## Active objective
+## Capabilities
 
-Implement **Phase 8A — Broker Readiness and Dry Run**.
+- broker-neutral account, position, order, leg, plan, validation, and reconciliation models
+- read-only Schwab account discovery, account balances, positions, and recent orders
+- bull put spread order-plan construction
+- deterministic order validation
+- local dry-run preview
+- read-only account reconciliation
 
 ## Exact next engineering task
 
-1. switch to `develop`
-2. confirm `develop` contains v0.9.3
-3. create broker-neutral models and protocol under `app/trading`
-4. implement read-only Schwab trading/account adapter
-5. implement bull-put `OrderPlan` builder and validator
-6. add dry-run CLI commands
-7. add fake-broker contract tests
-8. run full regression suite
-9. update Phase 8 documentation
+After v0.10.0 is locally verified and committed, begin Phase 8B design review for persistent trade intents, manual approvals, submission safeguards, and order monitoring. Do not implement live submission before reviewing the actual Schwab order API signatures in the installed schwab-py version.
 
-## Mandatory constraints
+## Mandatory safety boundary
 
-- no live submission CLI in Phase 8A
-- no automatic retries of order mutations
-- broker state is authoritative
-- account IDs must be masked in reports and logs
-- every future state transition must be auditable
+`SchwabTradingClient` exposes no `place_order`, `cancel_order`, or `replace_order` method in v0.10.0. The CLI exposes no submit or cancel command.

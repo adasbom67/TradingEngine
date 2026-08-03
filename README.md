@@ -47,3 +47,12 @@ Future sessions should begin with:
 ## Safety status
 
 Live order execution is not enabled. Backtest option prices are modeled estimates and are not reconstructed historical fills.
+
+
+## Schwab account selection
+
+When more than one Schwab account is linked, set `SCHWAB_LIVE_ACCOUNT_HASH` in the local `.env` file. The environment value takes precedence over the blank repository default in `config/runtime.json`. Account identifiers are masked in CLI output. Never commit `.env` or a full account hash.
+
+## Web operations console
+
+Run `python web.py` and open `http://127.0.0.1:8000`. The console supports account selection, backtests, recommendations, dry-run review, paper status, and health checks. Live submission is unavailable.
