@@ -6,6 +6,7 @@ from app.brokers.schwab_market_data import SchwabMarketDataClient
 from app.config.strategy_config import PutSpreadConfig
 from app.data.schwab_option_chain_adapter import SchwabOptionChainAdapter
 from app.evaluation.candidate_pipeline import CandidatePipeline
+from app.evaluation.pipeline_diagnostics import PipelineDiagnostics
 from app.indicators.market_analysis import MarketAnalysisBuilder
 from app.models.market.price_snapshot import PriceSnapshot
 from app.models.market.trend_analysis import TrendAnalysis
@@ -37,12 +38,30 @@ class LiveCandidateScanner:
         as_of: date | None = None,
         portfolio_state: PortfolioState | None = None,
     ) -> list[TradeCandidate]:
+        candidates, _ = self.scan_with_diagnostics(
+            symbol,
+            price_snapshot,
+            trend_analysis,
+            config,
+            as_of=as_of,
+            portfolio_state=portfolio_state,
+        )
+        return candidates
+
+    def scan_with_diagnostics(
+        self,
+        symbol: str,
+        price_snapshot: PriceSnapshot,
+        trend_analysis: TrendAnalysis,
+        config: PutSpreadConfig,
+        as_of: date | None = None,
+        portfolio_state: PortfolioState | None = None,
+        diagnostics: PipelineDiagnostics | None = None,
+    ) -> tuple[list[TradeCandidate], PipelineDiagnostics]:
         config.validate()
         normalized_symbol = symbol.strip().upper()
         if price_snapshot.symbol.upper() != normalized_symbol:
-            raise ValueError(
-                "Price snapshot symbol does not match scan symbol."
-            )
+            raise ValueError("Price snapshot symbol does not match scan symbol.")
 
         reference_date = as_of or date.today()
         raw = self._market_data.get_put_option_chain(
@@ -54,20 +73,41 @@ class LiveCandidateScanner:
             raw,
             requested_symbol=normalized_symbol,
         )
+        if hasattr(self._pipeline, "run_with_diagnostics"):
+            return self._pipeline.run_with_diagnostics(
+                chain,
+                price_snapshot,
+                trend_analysis,
+                config,
+                portfolio_state=portfolio_state,
+                diagnostics=diagnostics,
+            )
+
         if portfolio_state is None:
-            return self._pipeline.run(
+            candidates = self._pipeline.run(
                 chain,
                 price_snapshot,
                 trend_analysis,
                 config,
             )
-        return self._pipeline.run(
-            chain,
-            price_snapshot,
-            trend_analysis,
-            config,
-            portfolio_state=portfolio_state,
+        else:
+            candidates = self._pipeline.run(
+                chain,
+                price_snapshot,
+                trend_analysis,
+                config,
+                portfolio_state=portfolio_state,
+            )
+        fallback = diagnostics or PipelineDiagnostics()
+        fallback.total_contracts = chain.contract_count()
+        fallback.total_puts = len(chain.puts())
+        fallback.expiration_count = len(
+            {str(contract.expiration_date) for contract in chain.contracts}
         )
+        fallback.candidates_built = len(candidates)
+        fallback.candidates_evaluated = len(candidates)
+        fallback.candidates_ranked = len(candidates)
+        return candidates, fallback
 
     def scan_live(
         self,
@@ -77,7 +117,23 @@ class LiveCandidateScanner:
         price_history_years: int = 2,
         portfolio_state: PortfolioState | None = None,
     ) -> list[TradeCandidate]:
-        """Build market analysis automatically, then scan live options."""
+        candidates, _ = self.scan_live_with_diagnostics(
+            symbol,
+            config,
+            as_of=as_of,
+            price_history_years=price_history_years,
+            portfolio_state=portfolio_state,
+        )
+        return candidates
+
+    def scan_live_with_diagnostics(
+        self,
+        symbol: str,
+        config: PutSpreadConfig,
+        as_of: date | None = None,
+        price_history_years: int = 2,
+        portfolio_state: PortfolioState | None = None,
+    ) -> tuple[list[TradeCandidate], PipelineDiagnostics]:
         normalized_symbol = symbol.strip().upper()
         price_history = self._market_data.get_daily_price_history(
             normalized_symbol,
@@ -88,11 +144,18 @@ class LiveCandidateScanner:
             price_history,
             config,
         )
-        return self.scan(
+        diagnostics = PipelineDiagnostics()
+        try:
+            diagnostics.price_history_bars = len(price_history)
+        except TypeError:
+            diagnostics.price_history_bars = 0
+
+        return self.scan_with_diagnostics(
             symbol=normalized_symbol,
             price_snapshot=snapshot,
             trend_analysis=trend,
             config=config,
             as_of=as_of,
             portfolio_state=portfolio_state,
+            diagnostics=diagnostics,
         )
