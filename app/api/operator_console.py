@@ -6,6 +6,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.backtesting import BacktestRequest, run_backtest
+from app.api.paper_trading import create_paper_trading_router
+from app.api.recommendation_history import RecommendationHistoryStore
 from app.api.recommendations import RecommendationRequest, run_recommendation_scan
 from app.api.trading_profiles import (
     ProfileDuplicateRequest,
@@ -13,7 +15,6 @@ from app.api.trading_profiles import (
     TradingProfile,
     TradingProfileStore,
 )
-from app.api.recommendation_history import RecommendationHistoryStore
 from app.config.service import ConfigService
 from app.operations.health import HealthChecker
 
@@ -26,12 +27,15 @@ def _read_version() -> str:
 def create_app() -> FastAPI:
     profile_store = TradingProfileStore()
     history_store = RecommendationHistoryStore()
+
     app = FastAPI(
         title="TradingEngine Workstation API",
         version=_read_version(),
         docs_url="/api/docs",
         redoc_url=None,
     )
+
+    app.router.routes.extend(create_paper_trading_router().routes)
 
     app.add_middleware(
         CORSMiddleware,
@@ -75,6 +79,7 @@ def create_app() -> FastAPI:
             }
             for check in health_report.checks
         ]
+
         latest_items = history_store.list_entries(limit=1)
         latest = latest_items[0] if latest_items else None
         summary = latest.get("summary", {}) if latest else {}
@@ -118,8 +123,11 @@ def create_app() -> FastAPI:
                     ),
                 },
                 "paper_trading": {
-                    "status": "DISABLED",
-                    "message": "Paper order submission is disabled in this slice.",
+                    "status": "READY",
+                    "message": (
+                        "Local simulation ledger is available; "
+                        "broker orders remain disabled."
+                    ),
                 },
                 "live_trading": {
                     "status": "DISABLED",
@@ -161,7 +169,6 @@ def create_app() -> FastAPI:
     def backtest(request: BacktestRequest) -> dict:
         return run_backtest(request)
 
-
     @app.get("/api/trading-profiles")
     def list_trading_profiles() -> dict:
         return {"profiles": profile_store.list_profiles()}
@@ -177,10 +184,7 @@ def create_app() -> FastAPI:
         return {"deleted": profile_name}
 
     @app.put("/api/trading-profiles/{profile_name}/rename")
-    def rename_trading_profile(
-        profile_name: str,
-        request: ProfileRenameRequest,
-    ) -> dict:
+    def rename_trading_profile(profile_name: str, request: ProfileRenameRequest) -> dict:
         try:
             profile = profile_store.rename(profile_name, request.new_name)
         except ValueError as exc:
@@ -190,10 +194,7 @@ def create_app() -> FastAPI:
         return {"profile": profile}
 
     @app.post("/api/trading-profiles/{profile_name}/duplicate")
-    def duplicate_trading_profile(
-        profile_name: str,
-        request: ProfileDuplicateRequest,
-    ) -> dict:
+    def duplicate_trading_profile(profile_name: str, request: ProfileDuplicateRequest) -> dict:
         try:
             profile = profile_store.duplicate(profile_name, request.new_name)
         except ValueError as exc:
@@ -224,10 +225,7 @@ def create_app() -> FastAPI:
     @app.post("/api/recommendations/scan")
     def recommendation_scan(request: RecommendationRequest) -> dict:
         result = run_recommendation_scan(request)
-        history = history_store.save(
-            request.model_dump(mode="json"),
-            result,
-        )
+        history = history_store.save(request.model_dump(mode="json"), result)
         result["history_id"] = history["id"]
         return result
 
