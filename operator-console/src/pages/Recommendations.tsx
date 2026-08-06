@@ -1,4 +1,4 @@
-import { Activity } from "lucide-react";
+﻿import { Activity } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import type { RecommendationCandidate, RecommendationResponse, ScanHistorySummary, TradingProfile } from "../types";
 import { Metric } from "../components/common/Metric";
@@ -47,6 +47,8 @@ export function Recommendations() {
   const [sortDirection, setSortDirection] = useState("desc");
   const [history, setHistory] = useState<ScanHistorySummary[]>([]);
   const [historyMessage, setHistoryMessage] = useState("");
+  const [paperStatus, setPaperStatus] = useState("");
+  const [paperSubmitting, setPaperSubmitting] = useState(false);
 
   useEffect(() => {
     fetch("http://127.0.0.1:8001/api/trading-profiles")
@@ -192,7 +194,7 @@ export function Recommendations() {
 
   async function loadHistory(historyId: string) {
     if (!historyId) return;
-    setHistoryMessage("Loading saved scan…");
+    setHistoryMessage("Loading saved scanâ€¦");
     const response = await fetch(`http://127.0.0.1:8001/api/recommendations/history/${historyId}`);
     const data = await response.json();
     if (!response.ok) { setHistoryMessage(data.detail ?? "Could not load scan history."); return; }
@@ -206,13 +208,13 @@ export function Recommendations() {
     const constraints = currentConstraints();
 
     setLoading(true);
-    setStatus("Loading Schwab market history and option chains…");
+    setStatus("Loading Schwab market history and option chainsâ€¦");
     setError("");
     setResult(null);
     setSelected(null);
 
     const timer = window.setTimeout(
-      () => setStatus("Applying hard constraints and evaluating candidates…"),
+      () => setStatus("Applying hard constraints and evaluating candidatesâ€¦"),
       900,
     );
 
@@ -249,6 +251,65 @@ export function Recommendations() {
     }
   }
 
+  async function executePaperTrade(candidate: RecommendationCandidate) {
+    const requested = window.prompt(
+      `Paper contracts for ${candidate.symbol} ${candidate.short_strike}/${candidate.long_strike}`,
+      "1",
+    );
+    if (requested == null) return;
+
+    const quantity = Number(requested);
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      setPaperStatus("Enter a positive whole-number contract quantity.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      [
+        "SIMULATION ONLY â€” no Schwab order will be submitted.",
+        "",
+        `${candidate.symbol} bull put spread`,
+        `Expiration: ${candidate.expiration}`,
+        `Short / long strikes: ${candidate.short_strike} / ${candidate.long_strike}`,
+        `Credit: $${candidate.selected_credit.toFixed(2)} per spread`,
+        `Quantity: ${quantity}`,
+        `Maximum risk: ${money.format(candidate.maximum_risk * quantity)}`,
+      ].join("\n"),
+    );
+    if (!confirmed) return;
+
+    setPaperSubmitting(true);
+    setPaperStatus("Creating simulated paper positionâ€¦");
+
+    try {
+      const response = await fetch("http://127.0.0.1:8001/api/paper/positions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: candidate.symbol,
+          expiration: candidate.expiration,
+          short_strike: candidate.short_strike,
+          long_strike: candidate.long_strike,
+          entry_credit: candidate.selected_credit,
+          quantity,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail ?? "Could not create paper position.");
+      }
+      setPaperStatus(
+        `${candidate.symbol} paper position created. Open Paper Trading to review it.`,
+      );
+    } catch (caught) {
+      setPaperStatus(
+        caught instanceof Error ? caught.message : "Paper trade creation failed.",
+      );
+    } finally {
+      setPaperSubmitting(false);
+    }
+  }
+
   const visibleCandidates =
     (result?.candidates.filter((candidate) => decisionFilter === "ALL" || candidate.decision === decisionFilter) ?? []).slice().sort((left, right) => {
       const values: Record<string, (candidate: RecommendationCandidate) => number> = {
@@ -261,7 +322,7 @@ export function Recommendations() {
   return (
     <div className="recommendations-workspace">
       <article className="card profile-toolbar">
-        <label>Saved profile<select value={selectedProfile} onChange={(event)=>{const name=event.target.value; setSelectedProfile(name); const profile=profiles.find((item)=>item.name===name); if(profile) applyProfile(profile);}}><option value="">None — current criteria</option>{profiles.map((profile)=><option key={profile.name} value={profile.name}>{profile.is_default ? "★ " : ""}{profile.name}</option>)}</select></label>
+        <label>Saved profile<select value={selectedProfile} onChange={(event)=>{const name=event.target.value; setSelectedProfile(name); const profile=profiles.find((item)=>item.name===name); if(profile) applyProfile(profile);}}><option value="">None â€” current criteria</option>{profiles.map((profile)=><option key={profile.name} value={profile.name}>{profile.is_default ? "â˜… " : ""}{profile.name}</option>)}</select></label>
         <label>Profile name<input value={profileName} onChange={(event)=>setProfileName(event.target.value)} placeholder="Example: Conservative Income"/></label>
         <button type="button" onClick={saveProfile}>Save / update</button>
         <button type="button" onClick={renameProfile}>Rename</button>
@@ -273,7 +334,7 @@ export function Recommendations() {
       <article className="card trust-toolbar">
         <label>Sort recommendations<select value={sortBy} onChange={(event)=>setSortBy(event.target.value)}><option value="score">Score</option><option value="credit">Selected credit</option><option value="return_on_risk">Return on risk</option><option value="probability_of_profit">Probability of profit</option><option value="expected_value">Expected value</option><option value="managed_expected_value">Managed EV</option><option value="expiration">Expiration</option></select></label>
         <label>Direction<select value={sortDirection} onChange={(event)=>setSortDirection(event.target.value)}><option value="desc">Highest first</option><option value="asc">Lowest first</option></select></label>
-        <label>Recommendation history<select defaultValue="" onChange={(event)=>loadHistory(event.target.value)}><option value="">Select a prior scan</option>{history.map((entry)=><option key={entry.id} value={entry.id}>{new Date(entry.scanned_at).toLocaleString()} · {entry.symbols.join(", ")} · {entry.summary.candidate_count ?? 0} included</option>)}</select></label>
+        <label>Recommendation history<select defaultValue="" onChange={(event)=>loadHistory(event.target.value)}><option value="">Select a prior scan</option>{history.map((entry)=><option key={entry.id} value={entry.id}>{new Date(entry.scanned_at).toLocaleString()} Â· {entry.symbols.join(", ")} Â· {entry.summary.candidate_count ?? 0} included</option>)}</select></label>
         {historyMessage && <span className="profile-message">{historyMessage}</span>}
       </article>
       <form className="constraints-form" onSubmit={scan}>
@@ -299,7 +360,7 @@ export function Recommendations() {
             </select>
           </label>
           <button className="primary scan-button" disabled={loading}>
-            {loading ? "Scanning…" : "Run constrained scan"}
+            {loading ? "Scanningâ€¦" : "Run constrained scan"}
           </button>
         </article>
 
@@ -496,7 +557,7 @@ export function Recommendations() {
         <aside className="trade-detail">
           {selected ? (
             <article className="card trade-detail-card">
-              <div className="trade-detail-header"><div><p className="eyebrow">{selected.market_regime || "MARKET REGIME UNKNOWN"}</p><h2>{selected.symbol} · Bull Put Spread</h2></div><DecisionBadge decision={selected.decision}/></div>
+              <div className="trade-detail-header"><div><p className="eyebrow">{selected.market_regime || "MARKET REGIME UNKNOWN"}</p><h2>{selected.symbol} Â· Bull Put Spread</h2></div><DecisionBadge decision={selected.decision}/></div>
               <div className="trade-summary-strip">
                 <div><small>Score</small><strong>{selected.score.toFixed(1)}</strong></div>
                 <div><small>Credit / contract</small><strong>${selected.selected_credit_per_contract.toFixed(0)}</strong></div>
@@ -507,9 +568,9 @@ export function Recommendations() {
               <div className="detail-grid">
                 <Detail label="Expiration" value={selected.expiration}/>
                 <Detail label="DTE" value={String(selected.dte)}/>
-                <Detail label="Short put" value={`${selected.short_strike} · Δ ${formatDelta(selected.short_delta)}`}/>
-                <Detail label="Long put" value={`${selected.long_strike} · Δ ${formatDelta(selected.long_delta)}`}/>
-                <Detail label="Net position Δ" value={formatDelta(selected.net_position_delta)}/>
+                <Detail label="Short put" value={`${selected.short_strike} Â· Î” ${formatDelta(selected.short_delta)}`}/>
+                <Detail label="Long put" value={`${selected.long_strike} Â· Î” ${formatDelta(selected.long_delta)}`}/>
+                <Detail label="Net position Î”" value={formatDelta(selected.net_position_delta)}/>
                 <Detail label="Selected credit" value={`$${selected.selected_credit.toFixed(2)}`}/>
                 <Detail label="Credit / contract" value={`$${selected.selected_credit_per_contract.toFixed(2)}`}/>
                 <Detail label="Scoring credit" value={`$${selected.quote.scoring_credit.toFixed(2)}`}/>
@@ -536,7 +597,23 @@ export function Recommendations() {
 
               <section className="detail-section"><h3>Why this decision?</h3><ul>{[...selected.decision_reasons,...selected.reasons].filter((value,index,values)=>value&&values.indexOf(value)===index).map((reason)=><li key={reason}>{reason}</li>)}</ul></section>
               {selected.warnings.length>0&&<section className="detail-section warning-section"><h3>Warnings</h3><ul>{selected.warnings.map((warning)=><li key={warning}>{warning}</li>)}</ul></section>}
-              <div className="safe-action-row"><button disabled>Create paper trade — later slice</button><button disabled>Live order unavailable</button></div>
+                            <div className="safe-action-row">
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={paperSubmitting || selected.decision !== "TRADE"}
+                  onClick={() => executePaperTrade(selected)}
+                >
+                  {paperSubmitting ? "Creating paper positionâ€¦" : "Execute in Paper"}
+                </button>
+                <button disabled>Live order unavailable</button>
+              </div>
+              {selected.decision !== "TRADE" && (
+                <p className="pricing-disclosure">
+                  Paper execution is enabled only for recommendations with a TRADE decision.
+                </p>
+              )}
+              {paperStatus && <p className="pricing-disclosure">{paperStatus}</p>}
             </article>
           ) : <article className="card empty-result"><h2>Trade review</h2><p>Select an included recommendation to inspect its quotes and rationale.</p></article>}
         </aside>
@@ -544,4 +621,5 @@ export function Recommendations() {
     </div>
   );
 }
+
 
