@@ -3,6 +3,7 @@ import { type FormEvent, useState } from "react";
 import type { BacktestResult } from "../types";
 import { Metric } from "../components/common/Metric";
 import { money } from "../utils/format";
+import { apiUrl } from "../api/client";
 
 export function Backtesting() {
   const [symbol, setSymbol] = useState("SPY");
@@ -48,7 +49,7 @@ export function Backtesting() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8001/api/backtests",
+        apiUrl("/api/backtests"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -313,5 +314,4 @@ export function Backtesting() {
     </div>
   );
 }
-
 

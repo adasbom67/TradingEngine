@@ -5,6 +5,7 @@ import { Metric } from "../components/common/Metric";
 import { DecisionBadge, Detail } from "../components/common/RecommendationAtoms";
 import { formatDelta, money } from "../utils/format";
 import { ConstraintExplorer } from "../components/recommendations/ConstraintExplorer";
+import { apiUrl } from "../api/client";
 
 export function Recommendations() {
   const [symbolsText, setSymbolsText] = useState("SPY, QQQ, IWM, DIA");
@@ -52,11 +53,11 @@ export function Recommendations() {
   const [paperSubmitting, setPaperSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch("http://127.0.0.1:8001/api/trading-profiles")
+    fetch(apiUrl("/api/trading-profiles"))
       .then((response) => response.json())
       .then((data) => setProfiles(data.profiles ?? []))
       .catch(() => setProfiles([]));
-    fetch("http://127.0.0.1:8001/api/recommendations/history")
+    fetch(apiUrl("/api/recommendations/history"))
       .then((response) => response.json())
       .then((data) => setHistory(data.history ?? []))
       .catch(() => setHistory([]));
@@ -145,19 +146,19 @@ export function Recommendations() {
   async function saveProfile() {
     const name = profileName.trim();
     if (!name) { setProfileMessage("Enter a profile name first."); return; }
-    const response = await fetch("http://127.0.0.1:8001/api/trading-profiles", {
+    const response = await fetch(apiUrl("/api/trading-profiles"), {
       method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({name, symbols: currentSymbols(), constraints: currentConstraints()}),
     });
     const data = await response.json();
     if (!response.ok) { setProfileMessage(data.detail ?? "Could not save profile."); return; }
-    const refreshed = await fetch("http://127.0.0.1:8001/api/trading-profiles").then((r)=>r.json());
+    const refreshed = await fetch(apiUrl("/api/trading-profiles")).then((r)=>r.json());
     setProfiles(refreshed.profiles ?? []); setSelectedProfile(data.profile.name); setProfileMessage(`Saved ${data.profile.name}.`);
   }
 
   async function deleteProfile() {
     if (!selectedProfile) { setProfileMessage("Select a saved profile first."); return; }
-    const response = await fetch(`http://127.0.0.1:8001/api/trading-profiles/${encodeURIComponent(selectedProfile)}`, {method:"DELETE"});
+    const response = await fetch(apiUrl(`/api/trading-profiles/${encodeURIComponent(selectedProfile)}`), {method:"DELETE"});
     if (!response.ok) { setProfileMessage("Could not delete profile."); return; }
     setProfiles((items)=>items.filter((item)=>item.name!==selectedProfile)); setSelectedProfile(""); setProfileMessage("Profile deleted.");
   }
@@ -166,10 +167,10 @@ export function Recommendations() {
     if (!selectedProfile) { setProfileMessage("Select a saved profile first."); return; }
     const newName = window.prompt("New profile name", selectedProfile)?.trim();
     if (!newName || newName === selectedProfile) return;
-    const response = await fetch(`http://127.0.0.1:8001/api/trading-profiles/${encodeURIComponent(selectedProfile)}/rename`, {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({new_name:newName})});
+    const response = await fetch(apiUrl(`/api/trading-profiles/${encodeURIComponent(selectedProfile)}/rename`), {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({new_name:newName})});
     const data = await response.json();
     if (!response.ok) { setProfileMessage(data.detail ?? "Could not rename profile."); return; }
-    const refreshed = await fetch("http://127.0.0.1:8001/api/trading-profiles").then((r)=>r.json());
+    const refreshed = await fetch(apiUrl("/api/trading-profiles")).then((r)=>r.json());
     setProfiles(refreshed.profiles ?? []); setSelectedProfile(data.profile.name); setProfileName(data.profile.name); setProfileMessage(`Renamed to ${data.profile.name}.`);
   }
 
@@ -177,26 +178,26 @@ export function Recommendations() {
     if (!selectedProfile) { setProfileMessage("Select a saved profile first."); return; }
     const newName = window.prompt("Name for duplicated profile", `${selectedProfile} Copy`)?.trim();
     if (!newName) return;
-    const response = await fetch(`http://127.0.0.1:8001/api/trading-profiles/${encodeURIComponent(selectedProfile)}/duplicate`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({new_name:newName})});
+    const response = await fetch(apiUrl(`/api/trading-profiles/${encodeURIComponent(selectedProfile)}/duplicate`), {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({new_name:newName})});
     const data = await response.json();
     if (!response.ok) { setProfileMessage(data.detail ?? "Could not duplicate profile."); return; }
-    const refreshed = await fetch("http://127.0.0.1:8001/api/trading-profiles").then((r)=>r.json());
+    const refreshed = await fetch(apiUrl("/api/trading-profiles")).then((r)=>r.json());
     setProfiles(refreshed.profiles ?? []); setSelectedProfile(data.profile.name); setProfileName(data.profile.name); setProfileMessage(`Duplicated as ${data.profile.name}.`);
   }
 
   async function setDefaultProfile() {
     if (!selectedProfile) { setProfileMessage("Select a saved profile first."); return; }
-    const response = await fetch(`http://127.0.0.1:8001/api/trading-profiles/${encodeURIComponent(selectedProfile)}/default`, {method:"PUT"});
+    const response = await fetch(apiUrl(`/api/trading-profiles/${encodeURIComponent(selectedProfile)}/default`), {method:"PUT"});
     const data = await response.json();
     if (!response.ok) { setProfileMessage(data.detail ?? "Could not set default profile."); return; }
-    const refreshed = await fetch("http://127.0.0.1:8001/api/trading-profiles").then((r)=>r.json());
+    const refreshed = await fetch(apiUrl("/api/trading-profiles")).then((r)=>r.json());
     setProfiles(refreshed.profiles ?? []); setProfileMessage(`${data.profile.name} is now the default.`);
   }
 
   async function loadHistory(historyId: string) {
     if (!historyId) return;
     setHistoryMessage("Loading saved scanâ€¦");
-    const response = await fetch(`http://127.0.0.1:8001/api/recommendations/history/${historyId}`);
+    const response = await fetch(apiUrl(`/api/recommendations/history/${historyId}`));
     const data = await response.json();
     if (!response.ok) { setHistoryMessage(data.detail ?? "Could not load scan history."); return; }
     setResult(data.scan); setSelected(data.scan.candidates?.[0] ?? null);
@@ -221,7 +222,7 @@ export function Recommendations() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8001/api/recommendations/scan",
+        apiUrl("/api/recommendations/scan"),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -240,7 +241,7 @@ export function Recommendations() {
       }
       setResult(data);
       setSelected(data.candidates[0] ?? null);
-      fetch("http://127.0.0.1:8001/api/recommendations/history").then((response)=>response.json()).then((historyData)=>setHistory(historyData.history ?? [])).catch(()=>undefined);
+      fetch(apiUrl("/api/recommendations/history")).then((response)=>response.json()).then((historyData)=>setHistory(historyData.history ?? [])).catch(()=>undefined);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Recommendation scan failed.",
@@ -283,7 +284,7 @@ export function Recommendations() {
     setPaperStatus("Creating simulated paper positionâ€¦");
 
     try {
-      const response = await fetch("http://127.0.0.1:8001/api/paper/positions", {
+      const response = await fetch(apiUrl("/api/paper/positions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

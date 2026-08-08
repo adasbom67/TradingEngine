@@ -1,0 +1,3 @@
+-r requirements.txt
+-r requirements-operator-console.txt
+pyinstaller>=6.19,<7

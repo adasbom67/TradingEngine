@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.backtesting import BacktestRequest, run_backtest
 from app.api.paper_trading import create_paper_trading_router
@@ -22,6 +24,19 @@ from app.operations.health import HealthChecker
 def _read_version() -> str:
     path = Path("VERSION")
     return path.read_text(encoding="utf-8").strip() if path.exists() else "unknown"
+
+
+def _operator_console_directory() -> Path | None:
+    """Return the built Operator Console directory when it is available.
+
+    The desktop host sets ``TRADINGENGINE_UI_DIR`` to its packaged UI. Local
+    builds fall back to ``operator-console/dist`` so a single backend process
+    can serve both the API and the production frontend.
+    """
+    configured = os.getenv("TRADINGENGINE_UI_DIR")
+    directory = Path(configured) if configured else Path("operator-console/dist")
+    index = directory / "index.html"
+    return directory.resolve() if index.is_file() else None
 
 
 def create_app() -> FastAPI:
@@ -47,7 +62,12 @@ def create_app() -> FastAPI:
 
     @app.get("/api/version")
     def version() -> dict[str, str]:
-        return {"version": _read_version(), "environment": "development"}
+        return {
+            "version": _read_version(),
+            "environment": (
+                "desktop" if os.getenv("TRADINGENGINE_DESKTOP") == "1" else "development"
+            ),
+        }
 
     @app.get("/api/health")
     def health() -> dict:
@@ -228,6 +248,14 @@ def create_app() -> FastAPI:
         history = history_store.save(request.model_dump(mode="json"), result)
         result["history_id"] = history["id"]
         return result
+
+    ui_directory = _operator_console_directory()
+    if ui_directory is not None:
+        app.mount(
+            "/",
+            StaticFiles(directory=ui_directory, html=True),
+            name="operator-console",
+        )
 
     return app
 

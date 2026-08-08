@@ -5,11 +5,24 @@ TradingEngine is a modular options research and trading platform focused initial
 ## Current version
 
 - Stable release: `v0.9.0`
-- Active release candidate: `v0.9.1`
+- Active release candidate: `v0.9.3`
 - Active branch: `develop`
 - Active phase: Production Readiness
 
-## Quick start
+## Desktop quick start
+
+Normal use no longer requires VS Code or a terminal. Open either Windows artifact in:
+
+```text
+operator-console\release
+```
+
+- `TradingEngine-0.9.3-x64-Setup.exe` installs the application and creates shortcuts.
+- `TradingEngine-0.9.3-x64-Portable.exe` runs directly without installation.
+
+The desktop application starts and stops its private API automatically. See `docs/DESKTOP_APPLICATION.md` for build and runtime details.
+
+## Developer quick start
 
 ```powershell
 python -m venv .venv
@@ -19,6 +32,12 @@ pytest -q
 python main.py version
 python main.py config validate
 python main.py health
+```
+
+Build the Windows desktop artifacts with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\packaging\build_desktop.ps1
 ```
 
 Schwab credentials remain local in `.env` and OAuth state remains local in `token.json`. Neither file may be committed.

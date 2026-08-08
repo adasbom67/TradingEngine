@@ -14,6 +14,7 @@ import { Backtesting } from "./pages/Backtesting";
 import { Recommendations } from "./pages/Recommendations";
 import { PaperTrading } from "./pages/PaperTrading";
 import { ComingSoon } from "./components/common/ComingSoon";
+import { apiUrl } from "./api/client";
 
 const pages: Array<{ label: Page; icon: typeof Gauge }> = [
   { label: "Dashboard", icon: Gauge },
@@ -36,17 +37,17 @@ export function App() {
 
   useEffect(() => {
     const refresh = () => {
-      fetch("http://127.0.0.1:8001/api/version")
+      fetch(apiUrl("/api/version"))
         .then((response) => response.json())
         .then((data) => setVersion(data.version))
         .catch(() => setVersion("offline"));
 
-      fetch("http://127.0.0.1:8001/api/health")
+      fetch(apiUrl("/api/health"))
         .then((response) => response.json())
         .then(setHealth)
         .catch(() => setHealth(null));
 
-      fetch("http://127.0.0.1:8001/api/dashboard")
+      fetch(apiUrl("/api/dashboard"))
         .then((response) => response.json())
         .then(setDashboard)
         .catch(() => setDashboard(null));
