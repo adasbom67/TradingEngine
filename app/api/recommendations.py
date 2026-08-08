@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import replace
 from collections import Counter
@@ -524,6 +524,12 @@ def run_recommendation_scan(request: RecommendationRequest) -> dict[str, Any]:
         )
         for field in pipeline_fields
     }
+    delta_distribution: dict[str, int] = {}
+    for item in diagnostics:
+        pipeline = item.get("pipeline") or {}
+        for bucket, count in pipeline.get("delta_distribution", {}).items():
+            delta_distribution[bucket] = delta_distribution.get(bucket, 0) + int(count)
+
     filter_rejections: dict[str, int] = {}
     builder_rejections: dict[str, int] = {}
     for item in diagnostics:
@@ -542,6 +548,7 @@ def run_recommendation_scan(request: RecommendationRequest) -> dict[str, Any]:
         "diagnostics": diagnostics,
         "pipeline_validation": {
             "totals": pipeline_totals,
+            "delta_distribution": delta_distribution,
             "filter_rejections": dict(
                 sorted(filter_rejections.items(), key=lambda item: item[1], reverse=True)
             ),
@@ -579,3 +586,4 @@ def run_recommendation_scan(request: RecommendationRequest) -> dict[str, Any]:
             "option model and are therefore reported as unavailable."
         ),
     }
+

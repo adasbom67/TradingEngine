@@ -3,37 +3,41 @@ from app.evaluation.pipeline_diagnostics import PipelineDiagnostics
 from app.models.market.option_chain import OptionChain
 from app.models.market.option_contract import OptionContract
 
+DELTA_BUCKETS = (
+    (0.05, "<0.05"), (0.10, "0.05-0.10"), (0.15, "0.10-0.15"),
+    (0.20, "0.15-0.20"), (0.25, "0.20-0.25"), (0.30, "0.25-0.30"),
+    (0.40, "0.30-0.40"), (float("inf"), ">=0.40"),
+)
+
+def delta_bucket(delta: float | None) -> str:
+    if delta is None:
+        return "missing"
+    value = abs(delta)
+    for upper, label in DELTA_BUCKETS:
+        if value < upper:
+            return label
+    return ">=0.40"
 
 class OptionChainFilter:
     """Select liquid put contracts that satisfy strategy constraints."""
 
-    def filter_puts(
-        self,
-        chain: OptionChain,
-        config: PutSpreadConfig,
-    ) -> list[OptionContract]:
+    def filter_puts(self, chain: OptionChain, config: PutSpreadConfig) -> list[OptionContract]:
         eligible, _ = self.filter_puts_with_diagnostics(chain, config)
         return eligible
 
-    def filter_puts_with_diagnostics(
-        self,
-        chain: OptionChain,
-        config: PutSpreadConfig,
-        diagnostics: PipelineDiagnostics | None = None,
-    ) -> tuple[list[OptionContract], PipelineDiagnostics]:
+    def filter_puts_with_diagnostics(self, chain: OptionChain, config: PutSpreadConfig,
+                                     diagnostics: PipelineDiagnostics | None = None):
         config.validate()
         diagnostics = diagnostics or PipelineDiagnostics()
         puts = chain.puts()
-
         diagnostics.total_contracts = chain.contract_count()
         diagnostics.total_puts = len(puts)
-        diagnostics.expiration_count = len(
-            {str(contract.expiration_date) for contract in chain.contracts}
-        )
+        diagnostics.expiration_count = len({str(c.expiration_date) for c in chain.contracts})
         diagnostics.filter_input_puts = len(puts)
 
-        eligible: list[OptionContract] = []
+        eligible = []
         for contract in puts:
+            diagnostics.increment_delta_bucket(delta_bucket(contract.delta))
             reason = self._rejection_reason(contract, config)
             if reason is None:
                 eligible.append(contract)
@@ -41,20 +45,11 @@ class OptionChainFilter:
                 diagnostics.increment_filter_rejection(reason)
 
         diagnostics.eligible_puts = len(eligible)
-        eligible.sort(
-            key=lambda contract: (
-                str(contract.expiration_date),
-                -contract.strike,
-                contract.symbol,
-            ),
-        )
+        eligible.sort(key=lambda c: (str(c.expiration_date), -c.strike, c.symbol))
         return eligible, diagnostics
 
     @staticmethod
-    def _rejection_reason(
-        contract: OptionContract,
-        config: PutSpreadConfig,
-    ) -> str | None:
+    def _rejection_reason(contract: OptionContract, config: PutSpreadConfig) -> str | None:
         if not config.minimum_dte <= contract.days_to_expiration <= config.maximum_dte:
             return "dte_out_of_range"
         if contract.delta is None:
@@ -77,9 +72,5 @@ class OptionChainFilter:
         return None
 
     @classmethod
-    def _is_eligible(
-        cls,
-        contract: OptionContract,
-        config: PutSpreadConfig,
-    ) -> bool:
+    def _is_eligible(cls, contract: OptionContract, config: PutSpreadConfig) -> bool:
         return cls._rejection_reason(contract, config) is None

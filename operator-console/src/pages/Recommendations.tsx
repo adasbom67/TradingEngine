@@ -4,6 +4,7 @@ import type { RecommendationCandidate, RecommendationResponse, ScanHistorySummar
 import { Metric } from "../components/common/Metric";
 import { DecisionBadge, Detail } from "../components/common/RecommendationAtoms";
 import { formatDelta, money } from "../utils/format";
+import { ConstraintExplorer } from "../components/recommendations/ConstraintExplorer";
 
 export function Recommendations() {
   const [symbolsText, setSymbolsText] = useState("SPY, QQQ, IWM, DIA");
@@ -438,6 +439,12 @@ export function Recommendations() {
               <p>{result.summary.symbols_succeeded} of {result.summary.symbols_requested} symbols completed successfully. {result.summary.symbols_failed ? `${result.summary.symbols_failed} failed.` : ""}</p>
             </div>
           </article>
+          <ConstraintExplorer
+            distribution={result.pipeline_validation.delta_distribution ?? {}}
+            filterRejections={result.pipeline_validation.filter_rejections ?? {}}
+            minimumDelta={typeof result.constraints.minimum_short_delta === "number" ? result.constraints.minimum_short_delta : null}
+            maximumDelta={typeof result.constraints.maximum_short_delta === "number" ? result.constraints.maximum_short_delta : null}
+          />
           <article className="card pipeline-validation-card">
             <div className="pipeline-validation-header">
               <div>
@@ -621,5 +628,6 @@ export function Recommendations() {
     </div>
   );
 }
+
 
 

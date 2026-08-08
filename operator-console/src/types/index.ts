@@ -1,4 +1,4 @@
-export type HealthCheck = { name: string; status: string; message: string };
+﻿export type HealthCheck = { name: string; status: string; message: string };
 export type Health = { healthy: boolean; checks: HealthCheck[] };
 
 export type Page =
@@ -144,6 +144,7 @@ export type RecommendationResponse = {
   }>;
   pipeline_validation: {
     totals: Record<string, number>;
+    delta_distribution: Record<string, number>;
     filter_rejections: Record<string, number>;
     builder_rejections: Record<string, number>;
   };
@@ -238,3 +239,4 @@ export type DashboardData = {
   portfolio: { status: string; open_positions: number | null; message: string };
   alerts: Array<{ severity: string; title: string; message: string }>;
 };
+
