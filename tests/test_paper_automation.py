@@ -56,6 +56,9 @@ def test_paper_automation_opens_only_trade_candidate(tmp_path):
     assert result.position is not None
     assert len(service.status().open_positions) == 1
     assert service.status().observations[-1].decision == "TRADE"
+    assert result.position.entry_decision == "TRADE"
+    assert result.position.entry_score == 90
+    assert result.position.entry_thesis == ["Scanner decision: TRADE."]
 
 
 def test_paper_automation_records_watch_without_opening(tmp_path):

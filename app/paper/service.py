@@ -39,6 +39,17 @@ class PaperTradingService:
         *,
         quantity: int = 1,
         opened_on: date | None = None,
+        entry_decision: str = "MANUAL",
+        allow_watch_simulation: bool = False,
+        entry_score: float | None = None,
+        entry_thesis: list[str] | None = None,
+        entry_reasons: list[str] | None = None,
+        entry_warnings: list[str] | None = None,
+        entry_constraints: dict | None = None,
+        market_regime: str | None = None,
+        source_scan_reference: str | None = None,
+        selected_pricing_method: str | None = None,
+        quote_audit_status: str | None = None,
     ) -> PaperPosition:
         normalized = symbol.strip().upper()
         if not normalized:
@@ -52,6 +63,15 @@ class PaperTradingService:
         open_date = opened_on or date.today()
         if expiration <= open_date:
             raise ValueError("Expiration must be after the open date.")
+        decision = entry_decision.strip().upper()
+        if decision == "PASS":
+            raise ValueError("PASS recommendations cannot be opened in Paper Trading.")
+        if decision == "WATCH" and not allow_watch_simulation:
+            raise ValueError(
+                "WATCH recommendations require explicit experimental simulation approval."
+            )
+        if decision not in {"TRADE", "WATCH", "MANUAL"}:
+            raise ValueError(f"Unsupported paper-entry decision: {decision or 'blank'}.")
 
         account = self._ledger.load()
         if account.has_open_symbol(normalized):
@@ -67,6 +87,17 @@ class PaperTradingService:
             quantity=quantity,
             current_debit=float(entry_credit),
             last_marked_on=open_date,
+            entry_decision=decision,
+            entry_score=entry_score,
+            entry_thesis=list(entry_thesis or []),
+            entry_reasons=list(entry_reasons or []),
+            entry_warnings=list(entry_warnings or []),
+            entry_constraints=dict(entry_constraints or {}),
+            market_regime=market_regime,
+            source_scan_reference=source_scan_reference,
+            selected_pricing_method=selected_pricing_method,
+            quote_audit_status=quote_audit_status,
+            experimental=decision == "WATCH",
         )
         account.positions.append(position)
         self._ledger.save(account)

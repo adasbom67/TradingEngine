@@ -269,6 +269,9 @@ export function Recommendations() {
     const confirmed = window.confirm(
       [
         "SIMULATION ONLY â€” no Schwab order will be submitted.",
+        candidate.decision === "WATCH"
+          ? "EXPERIMENTAL WATCH â€” this candidate was not approved as a TRADE."
+          : "Approved TRADE recommendation.",
         "",
         `${candidate.symbol} bull put spread`,
         `Expiration: ${candidate.expiration}`,
@@ -294,6 +297,17 @@ export function Recommendations() {
           long_strike: candidate.long_strike,
           entry_credit: candidate.selected_credit,
           quantity,
+          entry_decision: candidate.decision,
+          allow_watch_simulation: candidate.decision === "WATCH",
+          entry_score: candidate.score,
+          entry_thesis: candidate.decision_reasons,
+          entry_reasons: candidate.reasons,
+          entry_warnings: candidate.warnings,
+          entry_constraints: result?.constraints ?? {},
+          market_regime: candidate.market_regime,
+          source_scan_reference: result?.history_id ?? result?.scanned_at ?? null,
+          selected_pricing_method: candidate.selected_pricing_method,
+          quote_audit_status: candidate.quote.audit_status,
         }),
       });
       const payload = await response.json();
@@ -609,16 +623,16 @@ export function Recommendations() {
                 <button
                   type="button"
                   className="primary"
-                  disabled={paperSubmitting || selected.decision !== "TRADE"}
+                  disabled={paperSubmitting || selected.decision === "PASS"}
                   onClick={() => executePaperTrade(selected)}
                 >
-                  {paperSubmitting ? "Creating paper positionâ€¦" : "Execute in Paper"}
+                  {paperSubmitting ? "Creating paper positionâ€¦" : selected.decision === "WATCH" ? "Simulate WATCH in Paper" : "Execute in Paper"}
                 </button>
                 <button disabled>Live order unavailable</button>
               </div>
               {selected.decision !== "TRADE" && (
                 <p className="pricing-disclosure">
-                  Paper execution is enabled only for recommendations with a TRADE decision.
+                  PASS recommendations are always blocked. WATCH candidates may be simulated only as explicitly labeled experiments.
                 </p>
               )}
               {paperStatus && <p className="pricing-disclosure">{paperStatus}</p>}

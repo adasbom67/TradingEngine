@@ -74,3 +74,14 @@ def test_manager_closes_at_exit_dte(tmp_path):
     result = manager.manage_all(PutSpreadConfig(exit_dte=7), as_of=date(2027, 1, 10))[0]
     assert result.action == "CLOSED"
     assert result.reason == "EXIT_DTE"
+
+
+def test_manager_can_recommend_exit_without_auto_closing(tmp_path):
+    service, position = make_service(tmp_path)
+    manager = PaperPositionManager(service, FakeMarketData(payload(0.60, 0.20)))
+    result = manager.manage_all(
+        PutSpreadConfig(), as_of=date(2026, 12, 16), auto_close=False
+    )[0]
+    assert result.action == "EXIT_RECOMMENDED"
+    assert result.reason == "PROFIT_TARGET"
+    assert service.status().open_positions[0].current_debit == 0.40

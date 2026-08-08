@@ -172,6 +172,12 @@ class PaperTradeAutomation:
             spread.credit,
             quantity=approved_quantity,
             opened_on=observed_on,
+            entry_decision=decision,
+            entry_score=selected.score,
+            entry_thesis=selected.decision_reasons,
+            entry_reasons=selected.reasons,
+            entry_warnings=selected.warnings,
+            market_regime=selected.market_regime,
         )
         observation = self._service.record_observation(
             normalized,

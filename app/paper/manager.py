@@ -40,12 +40,15 @@ class PaperPositionManager:
         config: PutSpreadConfig,
         *,
         as_of: date | None = None,
+        auto_close: bool = True,
     ) -> list[PaperManagementResult]:
         config.validate()
         current_date = as_of or date.today()
         results: list[PaperManagementResult] = []
         for position in list(self._service.status().open_positions):
-            results.append(self._manage_position(position, config, current_date))
+            results.append(
+                self._manage_position(position, config, current_date, auto_close)
+            )
         self._service.record_snapshot(snapshot_on=current_date)
         return results
 
@@ -54,6 +57,7 @@ class PaperPositionManager:
         position: PaperPosition,
         config: PutSpreadConfig,
         current_date: date,
+        auto_close: bool,
     ) -> PaperManagementResult:
         try:
             raw = self._market_data.get_put_option_chain(
@@ -109,6 +113,17 @@ class PaperPositionManager:
                 position.symbol,
                 "MARKED",
                 "Position remains open.",
+                current_debit=current_debit,
+                pnl=marked.unrealized_pnl,
+                days_to_expiration=dte,
+            )
+
+        if not auto_close:
+            return PaperManagementResult(
+                position.position_id,
+                position.symbol,
+                "EXIT_RECOMMENDED",
+                reason,
                 current_debit=current_debit,
                 pnl=marked.unrealized_pnl,
                 days_to_expiration=dte,

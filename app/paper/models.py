@@ -19,6 +19,17 @@ class PaperPosition:
     exit_debit: float | None = None
     exit_reason: str | None = None
     last_marked_on: date | None = None
+    entry_decision: str = "MANUAL"
+    entry_score: float | None = None
+    entry_thesis: list[str] = field(default_factory=list)
+    entry_reasons: list[str] = field(default_factory=list)
+    entry_warnings: list[str] = field(default_factory=list)
+    entry_constraints: dict = field(default_factory=dict)
+    market_regime: str | None = None
+    source_scan_reference: str | None = None
+    selected_pricing_method: str | None = None
+    quote_audit_status: str | None = None
+    experimental: bool = False
 
     @property
     def is_open(self) -> bool:

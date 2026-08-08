@@ -129,6 +129,7 @@ export type PipelineDiagnostics = {
 };
 
 export type RecommendationResponse = {
+  history_id?: string;
   scanned_at: string;
   symbols: string[];
   constraints: Record<string, unknown>;
