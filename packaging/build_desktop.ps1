@@ -30,8 +30,17 @@ if (-not $SkipDependencyInstall) {
     }
 }
 
-& $venvPython -m pytest -q --basetemp (Join-Path $projectRoot "build\pytest-desktop")
-if ($LASTEXITCODE -ne 0) { throw "Backend validation failed." }
+Push-Location $projectRoot
+$pytestTemp = Join-Path $projectRoot ("build\pytest-desktop-" + [guid]::NewGuid().ToString("N"))
+try {
+    & $venvPython -m pytest -q --basetemp $pytestTemp
+    if ($LASTEXITCODE -ne 0) { throw "Backend validation failed." }
+} finally {
+    Pop-Location
+    if (Test-Path -LiteralPath $pytestTemp) {
+        Remove-Item -LiteralPath $pytestTemp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
 
 Push-Location $frontendRoot
 try {
