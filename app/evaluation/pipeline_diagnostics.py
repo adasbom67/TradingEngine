@@ -12,6 +12,9 @@ class PipelineDiagnostics:
     eligible_puts: int = 0
     filter_rejections: dict[str, int] = field(default_factory=dict)
     delta_distribution: dict[str, int] = field(default_factory=dict)
+    hedge_input_puts: int = 0
+    eligible_hedge_puts: int = 0
+    hedge_filter_rejections: dict[str, int] = field(default_factory=dict)
     pair_attempts: int = 0
     same_expiration_pairs: int = 0
     ordered_strike_pairs: int = 0
@@ -31,13 +34,20 @@ class PipelineDiagnostics:
     def increment_delta_bucket(self, bucket: str) -> None:
         self.delta_distribution[bucket] = self.delta_distribution.get(bucket, 0) + 1
 
+    def increment_hedge_filter_rejection(self, reason: str) -> None:
+        self.hedge_filter_rejections[reason] = (
+            self.hedge_filter_rejections.get(reason, 0) + 1
+        )
+
     def increment_builder_rejection(self, reason: str) -> None:
         self.builder_rejections[reason] = self.builder_rejections.get(reason, 0) + 1
 
     def first_zero_stage(self) -> str | None:
         stages = [
             ("option_contracts", self.total_contracts), ("put_contracts", self.total_puts),
-            ("eligible_puts", self.eligible_puts), ("same_expiration_pairs", self.same_expiration_pairs),
+            ("eligible_puts", self.eligible_puts),
+            ("eligible_hedge_puts", self.eligible_hedge_puts),
+            ("same_expiration_pairs", self.same_expiration_pairs),
             ("ordered_strike_pairs", self.ordered_strike_pairs), ("allowed_width_pairs", self.allowed_width_pairs),
             ("minimum_credit_pairs", self.minimum_credit_pairs), ("valid_credit_pairs", self.valid_credit_pairs),
             ("risk_approved_pairs", self.risk_approved_pairs), ("candidates_built", self.candidates_built),
@@ -54,6 +64,7 @@ class PipelineDiagnostics:
     def primary_bottleneck(self) -> dict[str, Any] | None:
         combined = {
             **{f"filter:{k}": v for k, v in self.filter_rejections.items()},
+            **{f"hedge_filter:{k}": v for k, v in self.hedge_filter_rejections.items()},
             **{f"builder:{k}": v for k, v in self.builder_rejections.items()},
         }
         if not combined:

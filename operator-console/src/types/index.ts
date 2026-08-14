@@ -108,6 +108,8 @@ export type PipelineDiagnostics = {
   price_history_bars: number;
   filter_input_puts: number;
   eligible_puts: number;
+  hedge_input_puts: number;
+  eligible_hedge_puts: number;
   pair_attempts: number;
   same_expiration_pairs: number;
   ordered_strike_pairs: number;
@@ -120,6 +122,7 @@ export type PipelineDiagnostics = {
   portfolio_rejections: number;
   candidates_ranked: number;
   filter_rejections: Record<string, number>;
+  hedge_filter_rejections: Record<string, number>;
   builder_rejections: Record<string, number>;
   first_zero_stage: string | null;
   primary_bottleneck: {

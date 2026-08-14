@@ -19,7 +19,7 @@ def delta_bucket(delta: float | None) -> str:
     return ">=0.40"
 
 class OptionChainFilter:
-    """Select liquid put contracts that satisfy strategy constraints."""
+    """Build separate short-put and protective-hedge universes."""
 
     def filter_puts(self, chain: OptionChain, config: PutSpreadConfig) -> list[OptionContract]:
         eligible, _ = self.filter_puts_with_diagnostics(chain, config)
@@ -48,6 +48,36 @@ class OptionChainFilter:
         eligible.sort(key=lambda c: (str(c.expiration_date), -c.strike, c.symbol))
         return eligible, diagnostics
 
+    def filter_hedge_puts(
+        self, chain: OptionChain, config: PutSpreadConfig
+    ) -> list[OptionContract]:
+        eligible, _ = self.filter_hedge_puts_with_diagnostics(chain, config)
+        return eligible
+
+    def filter_hedge_puts_with_diagnostics(
+        self,
+        chain: OptionChain,
+        config: PutSpreadConfig,
+        diagnostics: PipelineDiagnostics | None = None,
+    ) -> tuple[list[OptionContract], PipelineDiagnostics]:
+        """Select liquid long puts without applying short-leg delta or bid rules."""
+        config.validate()
+        diagnostics = diagnostics or PipelineDiagnostics()
+        puts = chain.puts()
+        diagnostics.hedge_input_puts = len(puts)
+
+        eligible: list[OptionContract] = []
+        for contract in puts:
+            reason = self._hedge_rejection_reason(contract, config)
+            if reason is None:
+                eligible.append(contract)
+            else:
+                diagnostics.increment_hedge_filter_rejection(reason)
+
+        diagnostics.eligible_hedge_puts = len(eligible)
+        eligible.sort(key=lambda c: (str(c.expiration_date), -c.strike, c.symbol))
+        return eligible, diagnostics
+
     @staticmethod
     def _rejection_reason(contract: OptionContract, config: PutSpreadConfig) -> str | None:
         if not config.minimum_dte <= contract.days_to_expiration <= config.maximum_dte:
@@ -67,6 +97,24 @@ class OptionChainFilter:
             return "volume_below_minimum"
         if contract.ask < contract.bid:
             return "invalid_bid_ask"
+        if contract.ask - contract.bid > config.maximum_bid_ask_spread:
+            return "bid_ask_spread_too_wide"
+        return None
+
+    @staticmethod
+    def _hedge_rejection_reason(
+        contract: OptionContract, config: PutSpreadConfig
+    ) -> str | None:
+        if not config.minimum_dte <= contract.days_to_expiration <= config.maximum_dte:
+            return "dte_out_of_range"
+        if contract.ask <= 0:
+            return "non_positive_ask"
+        if contract.ask < contract.bid:
+            return "invalid_bid_ask"
+        if contract.open_interest < config.minimum_open_interest:
+            return "open_interest_below_minimum"
+        if contract.volume < config.minimum_volume:
+            return "volume_below_minimum"
         if contract.ask - contract.bid > config.maximum_bid_ask_spread:
             return "bid_ask_spread_too_wide"
         return None

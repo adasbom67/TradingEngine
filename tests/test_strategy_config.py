@@ -7,6 +7,7 @@ def test_default_strategy_config_is_valid():
     config = PutSpreadConfig()
 
     config.validate()
+    assert config.allowed_spread_widths == (3.0, 5.0, 10.0)
 
 
 def test_strategy_config_requires_at_least_one_spread_width():

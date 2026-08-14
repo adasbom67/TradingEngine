@@ -65,8 +65,16 @@ class CandidatePipeline:
         eligible_puts, diagnostics = self._option_filter.filter_puts_with_diagnostics(
             chain, config, diagnostics
         )
+        eligible_hedges, diagnostics = (
+            self._option_filter.filter_hedge_puts_with_diagnostics(
+                chain, config, diagnostics
+            )
+        )
         candidates, diagnostics = self._spread_builder.build_with_diagnostics(
-            eligible_puts, config, diagnostics
+            eligible_puts,
+            config,
+            diagnostics,
+            long_puts=eligible_hedges,
         )
 
         evaluated: list[TradeCandidate] = []

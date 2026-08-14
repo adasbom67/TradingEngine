@@ -14,8 +14,12 @@ class BullPutSpreadBuilder:
         self,
         puts: list[OptionContract],
         config: PutSpreadConfig,
+        *,
+        long_puts: list[OptionContract] | None = None,
     ) -> list[TradeCandidate]:
-        candidates, _ = self.build_with_diagnostics(puts, config)
+        candidates, _ = self.build_with_diagnostics(
+            puts, config, long_puts=long_puts
+        )
         return candidates
 
     def build_with_diagnostics(
@@ -23,13 +27,16 @@ class BullPutSpreadBuilder:
         puts: list[OptionContract],
         config: PutSpreadConfig,
         diagnostics: PipelineDiagnostics | None = None,
+        *,
+        long_puts: list[OptionContract] | None = None,
     ) -> tuple[list[TradeCandidate], PipelineDiagnostics]:
         config.validate()
         diagnostics = diagnostics or PipelineDiagnostics()
         candidates: list[TradeCandidate] = []
 
+        hedge_universe = puts if long_puts is None else long_puts
         for short_put in puts:
-            for long_put in puts:
+            for long_put in hedge_universe:
                 diagnostics.pair_attempts += 1
                 if not self._same_expiration(short_put, long_put):
                     diagnostics.increment_builder_rejection("different_expiration")

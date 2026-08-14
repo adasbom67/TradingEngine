@@ -511,6 +511,7 @@ def run_recommendation_scan(request: RecommendationRequest) -> dict[str, Any]:
     pipeline_fields = [
         "total_contracts", "total_puts", "expiration_count",
         "price_history_bars", "filter_input_puts", "eligible_puts",
+        "hedge_input_puts", "eligible_hedge_puts",
         "pair_attempts", "same_expiration_pairs", "ordered_strike_pairs",
         "allowed_width_pairs", "minimum_credit_pairs", "valid_credit_pairs",
         "risk_approved_pairs", "candidates_built", "candidates_evaluated",

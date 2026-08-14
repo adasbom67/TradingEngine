@@ -32,7 +32,7 @@ class PutSpreadConfig:
     maximum_bid_ask_spread: float = 0.15
 
     # Spread construction rules
-    allowed_spread_widths: tuple[float, ...] = (2.0, 3.0, 5.0, 10.0)
+    allowed_spread_widths: tuple[float, ...] = (3.0, 5.0, 10.0)
     minimum_credit: float = 0.50
 
     # Decision thresholds

@@ -52,6 +52,24 @@ def test_filter_diagnostics_identify_delta_and_liquidity_bottlenecks():
     assert diagnostics.filter_rejections["volume_below_minimum"] == 1
 
 
+def test_hedge_filter_ignores_delta_and_short_leg_minimum_bid():
+    chain = OptionChain(
+        underlying_symbol="SPY",
+        underlying_price=700,
+        contracts=[
+            contract(680, delta=None, bid=0.05, ask=0.10),
+            contract(675, delta=-0.05, bid=0.05, ask=0.10, volume=0),
+        ],
+    )
+    hedges, diagnostics = OptionChainFilter().filter_hedge_puts_with_diagnostics(
+        chain, PutSpreadConfig()
+    )
+
+    assert [item.strike for item in hedges] == [680]
+    assert diagnostics.eligible_hedge_puts == 1
+    assert diagnostics.hedge_filter_rejections["volume_below_minimum"] == 1
+
+
 def test_builder_diagnostics_identify_width_bottleneck():
     config = PutSpreadConfig(allowed_spread_widths=(5.0,))
     puts = [contract(680), contract(670)]

@@ -48,3 +48,42 @@ def test_pipeline_assigns_explicit_decision():
     )
 
     assert ranked[0].decision in {"TRADE", "WATCH", "PASS"}
+
+
+def test_pipeline_uses_lower_delta_low_bid_put_as_fixed_width_hedge():
+    puts = [
+        create_option(500, bid=1.50, ask=1.60, delta=-0.20),
+        create_option(495, bid=0.05, ask=0.10, delta=-0.05),
+    ]
+    pipeline = CandidatePipeline(SpreadEvaluator([TrendEvaluator()]))
+
+    ranked = pipeline.run(
+        chain=OptionChain("SPY", 605.0, puts),
+        price_snapshot=create_price_snapshot(),
+        trend_analysis=TrendAnalysis(passed=True, score=100),
+        config=PutSpreadConfig(),
+    )
+
+    assert len(ranked) == 1
+    assert ranked[0].spread.short_put.strike == 500
+    assert ranked[0].spread.long_put.strike == 495
+    assert ranked[0].spread.long_put.delta == -0.05
+
+
+def test_pipeline_does_not_require_delta_on_fixed_width_hedge():
+    puts = [
+        create_option(500, bid=1.50, ask=1.60, delta=-0.20),
+        create_option(497, bid=0.05, ask=0.10, delta=None),
+    ]
+    pipeline = CandidatePipeline(SpreadEvaluator([TrendEvaluator()]))
+
+    ranked = pipeline.run(
+        chain=OptionChain("SPY", 605.0, puts),
+        price_snapshot=create_price_snapshot(),
+        trend_analysis=TrendAnalysis(passed=True, score=100),
+        config=PutSpreadConfig(),
+    )
+
+    assert len(ranked) == 1
+    assert ranked[0].spread.width == 3
+    assert ranked[0].spread.long_put.delta is None
