@@ -6,8 +6,15 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from app.api.backtesting import BacktestRequest, run_backtest
+from app.api.critical_events import CriticalEventScanRequest, run_critical_event_scan
+from app.api.critical_event_research import (
+    CriticalEventBacktestRequest,
+    critical_event_archive_status,
+    run_critical_event_backtest,
+)
 from app.api.paper_trading import create_paper_trading_router
 from app.api.recommendation_history import RecommendationHistoryStore
 from app.api.recommendations import RecommendationRequest, run_recommendation_scan
@@ -17,8 +24,20 @@ from app.api.trading_profiles import (
     TradingProfile,
     TradingProfileStore,
 )
+from app.brokers.schwab_connection import (
+    SchwabConnectionError,
+    begin_schwab_authorization,
+    complete_schwab_authorization,
+    is_schwab_authentication_error,
+    schwab_connection_status,
+)
 from app.config.service import ConfigService
 from app.operations.health import HealthChecker
+from app.monitoring.critical_event_monitor import CriticalEventMonitor, ETF_UNIVERSE, MonitorConfiguration
+
+
+class SchwabAuthorizationCompleteRequest(BaseModel):
+    redirect_url: str
 
 
 def _read_version() -> str:
@@ -42,6 +61,9 @@ def _operator_console_directory() -> Path | None:
 def create_app() -> FastAPI:
     profile_store = TradingProfileStore()
     history_store = RecommendationHistoryStore()
+    critical_event_monitor = CriticalEventMonitor(
+        lambda: run_critical_event_scan(CriticalEventScanRequest(symbols=ETF_UNIVERSE))
+    )
 
     app = FastAPI(
         title="TradingEngine Workstation API",
@@ -84,6 +106,26 @@ def create_app() -> FastAPI:
                 for check in report.checks
             ],
         }
+
+    @app.get("/api/schwab/status")
+    def schwab_status() -> dict:
+        return schwab_connection_status()
+
+    @app.post("/api/schwab/authorize")
+    def schwab_authorize() -> dict:
+        try:
+            return begin_schwab_authorization()
+        except SchwabConnectionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/schwab/authorize/complete")
+    def schwab_authorize_complete(
+        request: SchwabAuthorizationCompleteRequest,
+    ) -> dict:
+        try:
+            return complete_schwab_authorization(request.redirect_url)
+        except SchwabConnectionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/dashboard")
     def dashboard() -> dict:
@@ -189,6 +231,45 @@ def create_app() -> FastAPI:
     def backtest(request: BacktestRequest) -> dict:
         return run_backtest(request)
 
+    @app.post("/api/critical-events/scan")
+    def critical_event_scan(request: CriticalEventScanRequest) -> dict:
+        connection = schwab_connection_status()
+        if connection.get("requires_reconnect"):
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "SCHWAB_RECONNECT_REQUIRED",
+                    "message": connection["message"],
+                },
+            )
+        return run_critical_event_scan(request)
+
+    @app.post("/api/critical-events/backtest")
+    def critical_event_backtest(request: CriticalEventBacktestRequest) -> dict:
+        connection = schwab_connection_status()
+        if connection.get("requires_reconnect"):
+            raise HTTPException(status_code=401, detail=connection["message"])
+        return run_critical_event_backtest(request)
+
+    @app.get("/api/critical-events/archive")
+    def critical_event_archive() -> dict:
+        return critical_event_archive_status()
+
+    @app.get("/api/critical-events/monitor")
+    def critical_event_monitor_status() -> dict:
+        return critical_event_monitor.status()
+
+    @app.post("/api/critical-events/monitor/start")
+    def start_critical_event_monitor() -> dict:
+        connection = schwab_connection_status()
+        if connection.get("requires_reconnect"):
+            raise HTTPException(status_code=401, detail=connection["message"])
+        return critical_event_monitor.start(MonitorConfiguration())
+
+    @app.post("/api/critical-events/monitor/stop")
+    def stop_critical_event_monitor() -> dict:
+        return critical_event_monitor.stop()
+
     @app.get("/api/trading-profiles")
     def list_trading_profiles() -> dict:
         return {"profiles": profile_store.list_profiles()}
@@ -244,7 +325,33 @@ def create_app() -> FastAPI:
 
     @app.post("/api/recommendations/scan")
     def recommendation_scan(request: RecommendationRequest) -> dict:
+        connection = schwab_connection_status()
+        if connection.get("requires_reconnect"):
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "SCHWAB_RECONNECT_REQUIRED",
+                    "message": connection["message"],
+                },
+            )
         result = run_recommendation_scan(request)
+        authentication_errors = [
+            item.get("message", "")
+            for item in result.get("diagnostics", [])
+            if item.get("status") == "ERROR"
+            and is_schwab_authentication_error(item.get("message", ""))
+        ]
+        if authentication_errors:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": "SCHWAB_RECONNECT_REQUIRED",
+                    "message": (
+                        "Schwab rejected the saved credentials. Reconnect Schwab, "
+                        "then run the scan again."
+                    ),
+                },
+            )
         history = history_store.save(request.model_dump(mode="json"), result)
         result["history_id"] = history["id"]
         return result

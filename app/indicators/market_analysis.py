@@ -52,6 +52,16 @@ class MarketAnalysisBuilder:
                 snapshot.is_above_200_sma(),
                 "Price is above the 200-day SMA.",
             ))
+        if config.require_20_sma_below_200_sma:
+            checks.append((
+                snapshot.sma20 < snapshot.sma200,
+                "20-day SMA is below the 200-day SMA.",
+            ))
+        if config.require_price_below_200_sma:
+            checks.append((
+                snapshot.current_price < snapshot.sma200,
+                "Price is below the 200-day SMA.",
+            ))
         if config.require_price_below_20_sma:
             checks.append((
                 snapshot.is_pullback_to_20(),

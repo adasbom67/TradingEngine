@@ -1,5 +1,8 @@
 # TradingEngine Desktop Application
 
+> **Role:** Focused desktop runtime and packaging supplement.
+> **Canonical system description:** [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)
+
 ## Outcome
 
 TradingEngine is distributed as a Windows desktop application. Opening the application starts its private Python service automatically, waits for it to become healthy, and then opens the Operator Console in a native Electron window. Closing the window also stops the private service.

@@ -9,6 +9,22 @@ AUTHORIZE_URL = "https://api.schwabapi.com/v1/oauth/authorize"
 TOKEN_URL = "https://api.schwabapi.com/v1/oauth/token"
 QUOTE_URL = "https://api.schwabapi.com/marketdata/v1/quotes"
 
+
+def _query_value_preserving_plus(url: str, name: str) -> str | None:
+    """Decode a callback parameter without changing a literal '+' into a space."""
+    query = urllib.parse.urlsplit(url).query
+    for field in query.split("&"):
+        raw_name, separator, raw_value = field.partition("=")
+        if separator and urllib.parse.unquote(raw_name) == name:
+            return urllib.parse.unquote(raw_value)
+    return None
+
+
+def _redirect_target(url: str) -> tuple[str, str, int | None, str]:
+    parsed = urllib.parse.urlsplit(url)
+    path = parsed.path or "/"
+    return parsed.scheme.lower(), (parsed.hostname or "").lower(), parsed.port, path
+
 def main():
     load_dotenv()
     key = os.getenv("SCHWAB_APP_KEY")
@@ -33,8 +49,22 @@ def main():
     print("Authorization URL:", auth_url, "\n")
 
     redirected = input("Redirect URL> ").strip()
-    q = urllib.parse.parse_qs(urllib.parse.urlparse(redirected).query)
-    code = q.get("code", [None])[0]
+    if _redirect_target(redirected) != _redirect_target(callback):
+        raise RuntimeError(
+            "The pasted redirect URL does not target the configured callback URL. "
+            f"Expected {callback!r}. Check the callback value in the Schwab developer portal."
+        )
+
+    error = _query_value_preserving_plus(redirected, "error")
+    if error:
+        description = _query_value_preserving_plus(redirected, "error_description")
+        raise RuntimeError(f"Schwab authorization failed: {error}: {description or 'no description'}")
+
+    returned_state = _query_value_preserving_plus(redirected, "state")
+    if returned_state != state:
+        raise RuntimeError("The callback state did not match this login attempt. Start again with a fresh URL.")
+
+    code = _query_value_preserving_plus(redirected, "code")
     if not code:
         raise RuntimeError("No authorization code found in redirect URL")
 
@@ -61,6 +91,11 @@ def main():
                 "error": token.get("error"),
                 "error_description": token.get("error_description")
             }, indent=2))
+            print("\nThe code was generated for this run and was parsed without converting '+' characters.")
+            print("If Schwab still reports invalid_grant, verify in the developer portal that:")
+            print(f"  1. The app callback is exactly: {callback}")
+            print("  2. The app status is Ready for Use")
+            print("Then run this script again; authorization codes cannot be reused.")
             return
 
         summary = {

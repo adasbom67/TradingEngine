@@ -15,23 +15,43 @@ class TrendEvaluator(BaseEvaluator):
         trend = context.trend_analysis
         config = context.strategy_config
 
-        if snapshot.sma20 > snapshot.sma200:
+        bearish = context.candidate.spread.direction == "BEARISH"
+
+        if (snapshot.sma20 < snapshot.sma200) if bearish else (snapshot.sma20 > snapshot.sma200):
             score += config.trend_weight_sma_alignment
-            reasons.append("20-day SMA is above the 200-day SMA.")
+            reasons.append(
+                "20-day SMA is below the 200-day SMA."
+                if bearish else "20-day SMA is above the 200-day SMA."
+            )
         else:
-            warnings.append("20-day SMA is not above the 200-day SMA.")
+            warnings.append(
+                "20-day SMA is not below the 200-day SMA."
+                if bearish else "20-day SMA is not above the 200-day SMA."
+            )
 
-        if snapshot.current_price > snapshot.sma200:
+        if (snapshot.current_price < snapshot.sma200) if bearish else (snapshot.current_price > snapshot.sma200):
             score += config.trend_weight_price_above_200
-            reasons.append("Price is above the 200-day SMA.")
+            reasons.append(
+                "Price is below the 200-day SMA."
+                if bearish else "Price is above the 200-day SMA."
+            )
         else:
-            warnings.append("Price is not above the 200-day SMA.")
+            warnings.append(
+                "Price is not below the 200-day SMA."
+                if bearish else "Price is not above the 200-day SMA."
+            )
 
-        if snapshot.current_price > snapshot.sma20:
+        if (snapshot.current_price < snapshot.sma20) if bearish else (snapshot.current_price > snapshot.sma20):
             score += config.trend_weight_price_above_20
-            reasons.append("Price is above the 20-day SMA.")
+            reasons.append(
+                "Price is below the 20-day SMA."
+                if bearish else "Price is above the 20-day SMA."
+            )
         else:
-            warnings.append("Price is not above the 20-day SMA.")
+            warnings.append(
+                "Price is not below the 20-day SMA."
+                if bearish else "Price is not above the 20-day SMA."
+            )
 
         if trend.passed:
             score += config.trend_weight_trend_confirmation

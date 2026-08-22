@@ -59,3 +59,30 @@ def test_no_live_order_routes_are_exposed():
         for path in paths
         for token in blocked_tokens
     )
+
+
+def test_critical_event_backtest_endpoint_serializes_result(monkeypatch):
+    monkeypatch.setattr(
+        "app.api.operator_console.run_critical_event_backtest",
+        lambda request: {"results": [{"symbol": request.symbols[0]}], "diagnostics": []},
+    )
+    response = TestClient(create_app()).post(
+        "/api/critical-events/backtest",
+        json={"symbols": ["spy"], "period_years": 5, "minimum_signal_score": 4,
+              "entry_dte": 32, "implied_volatility_markup": 1.15},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["results"][0]["symbol"] == "SPY"
+
+
+def test_critical_event_archive_status_endpoint(monkeypatch):
+    monkeypatch.setattr(
+        "app.api.operator_console.critical_event_archive_status",
+        lambda: {"enabled": True, "snapshot_count": 7},
+    )
+
+    response = TestClient(create_app()).get("/api/critical-events/archive")
+
+    assert response.status_code == 200
+    assert response.json()["snapshot_count"] == 7

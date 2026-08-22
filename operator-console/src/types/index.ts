@@ -13,6 +13,124 @@ export type Page =
   | "Operations"
   | "Settings";
 
+export type CriticalEventCandidate = {
+  symbol: string;
+  price: number;
+  total_score: number;
+  score_maximum: number;
+  phase: "WATCH" | "IGNITION";
+  scores: Record<string, number>;
+  model_target: string;
+  alternatives_evaluated: number;
+  option: {
+    expiration: string;
+    dte: number;
+    strike: number;
+    call_symbol: string;
+    put_symbol: string;
+    call_bid: number;
+    call_ask: number;
+    put_bid: number;
+    put_ask: number;
+    straddle_mid: number;
+    natural_debit: number;
+    modeled_entry_debit: number;
+    cost_buffer: number;
+    estimated_fees?: number;
+    upper_breakeven: number;
+    lower_breakeven: number;
+    breakeven_move_pct: number;
+    implied_move_pct: number;
+    spread_pct: number;
+    quote_time: string | null;
+  };
+  metrics: Record<string, number | string | boolean | null>;
+  data_quality: {
+    market_session: string;
+    quotes_provisional: boolean;
+    quote_time: string | null;
+    event_calendar: string;
+  };
+  reasons: string[];
+};
+
+export type CriticalEventResponse = {
+  generated_at: string;
+  source: string;
+  execution_mode: string;
+  disclosure: string;
+  candidates: CriticalEventCandidate[];
+  diagnostics: Array<{ symbol: string; status: string; message: string }>;
+};
+
+export type CriticalEventAlert = {
+  id: string;
+  created_at: string;
+  symbol: string;
+  score: number;
+  phase: string;
+  option: CriticalEventCandidate["option"];
+  reasons: string[];
+};
+
+export type CriticalEventMonitorStatus = {
+  enabled: boolean;
+  state: string;
+  message: string;
+  configuration: { interval_minutes: number; minimum_score: number; confirmations_required: number; market_hours_only: boolean };
+  last_scan_at: string | null;
+  next_scan_at: string | null;
+  latest_candidates: CriticalEventCandidate[];
+  diagnostics: Array<{ symbol: string; status: string; message: string }>;
+  alerts: CriticalEventAlert[];
+  email_configured: boolean;
+};
+
+export type CriticalEventArchiveStatus = {
+  enabled: boolean;
+  path: string;
+  interval_minutes?: number;
+  retention_days?: number;
+  maximum_bytes: number;
+  physical_bytes?: number;
+  logical_estimated_bytes?: number;
+  snapshot_count?: number;
+  contract_count?: number;
+  oldest_snapshot?: string | null;
+  newest_snapshot?: string | null;
+  projected_annual_bytes?: number;
+  scope?: string;
+};
+
+export type CriticalEventHorizonMetrics = {
+  count: number;
+  average_absolute_return: number;
+  average_maximum_excursion: number;
+  breakeven_rate: number;
+  modeled_win_rate: number;
+  average_modeled_pnl: number;
+  execution_sensitivity: Record<string, { modeled_win_rate: number; average_modeled_pnl: number }>;
+};
+
+export type CriticalEventBacktestResponse = {
+  results: Array<{
+    symbol: string;
+    period: { start: string; end: string; daily_bars: number };
+    configuration: Record<string, number | string>;
+    signal_count: number;
+    horizons: Record<string, CriticalEventHorizonMetrics>;
+    by_score: Array<{ score: number; count: number; horizons: Record<string, CriticalEventHorizonMetrics> }>;
+    walk_forward: {
+      method: string;
+      training: { count: number; horizon_20: CriticalEventHorizonMetrics };
+      testing: { count: number; horizon_20: CriticalEventHorizonMetrics };
+    };
+  }>;
+  diagnostics: Array<{ symbol: string; status: string; message: string }>;
+  methodology: Record<string, string | boolean>;
+  disclosure: string;
+};
+
 export type BacktestResult = {
   configuration: {
     symbol: string;
@@ -49,6 +167,10 @@ export type BacktestResult = {
 
 export type RecommendationCandidate = {
   symbol: string;
+  strategy_type?: "BULL_PUT" | "BEAR_CALL";
+  strategy_name?: string;
+  option_type?: "PUT" | "CALL";
+  direction?: "BULLISH" | "BEARISH";
   rank: number;
   decision: string;
   score: number;
@@ -102,14 +224,21 @@ export type RecommendationCandidate = {
 };
 
 export type PipelineDiagnostics = {
+  strategy_type?: "BULL_PUT" | "BEAR_CALL";
   total_contracts: number;
   total_puts: number;
+  total_calls?: number;
   expiration_count: number;
   price_history_bars: number;
+  minimum_volume_enforced?: boolean;
   filter_input_puts: number;
   eligible_puts: number;
+  filter_input_calls?: number;
+  eligible_calls?: number;
   hedge_input_puts: number;
   eligible_hedge_puts: number;
+  hedge_input_calls?: number;
+  eligible_hedge_calls?: number;
   pair_attempts: number;
   same_expiration_pairs: number;
   ordered_strike_pairs: number;
@@ -135,10 +264,20 @@ export type RecommendationResponse = {
   history_id?: string;
   scanned_at: string;
   symbols: string[];
+  strategies: Array<"BULL_PUT" | "BEAR_CALL">;
+  market_session?: {
+    status: "PREMARKET" | "REGULAR" | "AFTER_HOURS" | "CLOSED";
+    is_regular_hours: boolean;
+    provisional: boolean;
+    observed_at: string;
+    message: string;
+  };
   constraints: Record<string, unknown>;
   candidates: RecommendationCandidate[];
   diagnostics: Array<{
     symbol: string;
+    strategy_type?: "BULL_PUT" | "BEAR_CALL";
+    strategy_name?: string;
     status: string;
     evaluated_count: number;
     included_count: number;
@@ -185,6 +324,9 @@ export type RecommendationResponse = {
   pricing_disclosure: string;
   rejected_candidates: Array<{
     symbol: string;
+    strategy_type?: "BULL_PUT" | "BEAR_CALL";
+    strategy_name?: string;
+    option_type?: "PUT" | "CALL";
     expiration: string;
     short_strike: number;
     long_strike: number;
@@ -195,6 +337,7 @@ export type RecommendationResponse = {
 export type TradingProfile = {
   name: string;
   symbols: string[];
+  strategies: Array<"BULL_PUT" | "BEAR_CALL">;
   constraints: Record<string, any>;
   is_default?: boolean;
 };
@@ -203,6 +346,7 @@ export type ScanHistorySummary = {
   id: string;
   scanned_at: string;
   symbols: string[];
+  strategies?: Array<"BULL_PUT" | "BEAR_CALL">;
   summary: {
     candidate_count?: number;
     rejected_count?: number;

@@ -13,7 +13,20 @@ def test_profile_store_round_trip(tmp_path: Path):
     )
     saved = store.save(profile)
     assert saved["symbols"] == ["SPY", "QQQ"]
+    assert saved["strategies"] == ["BULL_PUT"]
     assert store.list_profiles()[0]["constraints"]["minimum_credit_per_contract"] == 75
+
+
+def test_profile_preserves_both_strategy_directions(tmp_path: Path):
+    store = TradingProfileStore(tmp_path / "profiles.json")
+    saved = store.save(
+        TradingProfile(
+            name="Two Sided Credit",
+            symbols=["SPY"],
+            strategies=["BULL_PUT", "BEAR_CALL"],
+        )
+    )
+    assert saved["strategies"] == ["BULL_PUT", "BEAR_CALL"]
 
 
 def test_profile_save_updates_case_insensitively(tmp_path: Path):

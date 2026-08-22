@@ -58,10 +58,11 @@ python main.py scheduler status
 
 Future sessions should begin with:
 
-1. `PROJECT_STATUS.md`
-2. `ROADMAP.md`
-3. `DEVELOPMENT_METHODOLOGY.md`
-4. `CHANGELOG.md`
+1. [`docs/SYSTEM_OVERVIEW.md`](docs/SYSTEM_OVERVIEW.md) — current functionality, architecture, safety boundaries, and maintenance rules.
+2. `PROJECT_STATUS.md`
+3. `ROADMAP.md`
+4. `DEVELOPMENT_METHODOLOGY.md`
+5. `CHANGELOG.md`
 
 ## Safety status
 

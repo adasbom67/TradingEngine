@@ -4,16 +4,23 @@ from typing import Any
 
 @dataclass
 class PipelineDiagnostics:
+    strategy_type: str = "BULL_PUT"
     total_contracts: int = 0
     total_puts: int = 0
+    total_calls: int = 0
     expiration_count: int = 0
     price_history_bars: int = 0
+    minimum_volume_enforced: bool = True
     filter_input_puts: int = 0
     eligible_puts: int = 0
+    filter_input_calls: int = 0
+    eligible_calls: int = 0
     filter_rejections: dict[str, int] = field(default_factory=dict)
     delta_distribution: dict[str, int] = field(default_factory=dict)
     hedge_input_puts: int = 0
     eligible_hedge_puts: int = 0
+    hedge_input_calls: int = 0
+    eligible_hedge_calls: int = 0
     hedge_filter_rejections: dict[str, int] = field(default_factory=dict)
     pair_attempts: int = 0
     same_expiration_pairs: int = 0
@@ -43,10 +50,22 @@ class PipelineDiagnostics:
         self.builder_rejections[reason] = self.builder_rejections.get(reason, 0) + 1
 
     def first_zero_stage(self) -> str | None:
+        if self.strategy_type == "BEAR_CALL":
+            option_stages = [
+                ("option_contracts", self.total_contracts),
+                ("call_contracts", self.total_calls),
+                ("eligible_calls", self.eligible_calls),
+                ("eligible_hedge_calls", self.eligible_hedge_calls),
+            ]
+        else:
+            option_stages = [
+                ("option_contracts", self.total_contracts),
+                ("put_contracts", self.total_puts),
+                ("eligible_puts", self.eligible_puts),
+                ("eligible_hedge_puts", self.eligible_hedge_puts),
+            ]
         stages = [
-            ("option_contracts", self.total_contracts), ("put_contracts", self.total_puts),
-            ("eligible_puts", self.eligible_puts),
-            ("eligible_hedge_puts", self.eligible_hedge_puts),
+            *option_stages,
             ("same_expiration_pairs", self.same_expiration_pairs),
             ("ordered_strike_pairs", self.ordered_strike_pairs), ("allowed_width_pairs", self.allowed_width_pairs),
             ("minimum_credit_pairs", self.minimum_credit_pairs), ("valid_credit_pairs", self.valid_credit_pairs),

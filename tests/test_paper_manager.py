@@ -13,6 +13,9 @@ class FakeMarketData:
     def get_put_option_chain(self, symbol, from_date=None, to_date=None):
         return self.payload
 
+    def get_call_option_chain(self, symbol, from_date=None, to_date=None):
+        return self.payload
+
 
 def payload(short_ask: float, long_bid: float):
     expiration = "2027-01-15:30"
@@ -33,6 +36,32 @@ def payload(short_ask: float, long_bid: float):
                     "strikePrice": 695.0, "bid": long_bid,
                     "ask": long_bid + 0.05, "last": long_bid,
                     "delta": -0.15, "totalVolume": 100,
+                    "openInterest": 1000, "daysToExpiration": 30,
+                }],
+            }
+        },
+    }
+
+
+def call_payload(short_ask: float, long_bid: float):
+    expiration = "2027-01-15:30"
+    return {
+        "symbol": "SPY",
+        "underlyingPrice": 600.0,
+        "callExpDateMap": {
+            expiration: {
+                "605.0": [{
+                    "symbol": "SPY270115C00605000", "putCall": "CALL",
+                    "strikePrice": 605.0, "bid": short_ask - 0.05,
+                    "ask": short_ask, "last": short_ask,
+                    "delta": 0.20, "totalVolume": 100,
+                    "openInterest": 1000, "daysToExpiration": 30,
+                }],
+                "608.0": [{
+                    "symbol": "SPY270115C00608000", "putCall": "CALL",
+                    "strikePrice": 608.0, "bid": long_bid,
+                    "ask": long_bid + 0.05, "last": long_bid,
+                    "delta": 0.12, "totalVolume": 100,
                     "openInterest": 1000, "daysToExpiration": 30,
                 }],
             }
@@ -85,3 +114,21 @@ def test_manager_can_recommend_exit_without_auto_closing(tmp_path):
     assert result.action == "EXIT_RECOMMENDED"
     assert result.reason == "PROFIT_TARGET"
     assert service.status().open_positions[0].current_debit == 0.40
+
+
+def test_manager_marks_bear_call_from_live_call_chain(tmp_path):
+    service = PaperTradingService(PaperLedger(tmp_path / "paper.json"))
+    service.initialize(100_000)
+    position = service.open_position(
+        "SPY", date(2027, 1, 15), 605, 608, 1.0,
+        opened_on=date(2026, 12, 1), strategy_type="BEAR_CALL",
+    )
+    manager = PaperPositionManager(
+        service, FakeMarketData(call_payload(1.05, 0.20))
+    )
+    result = manager.manage_all(
+        PutSpreadConfig(), as_of=date(2026, 12, 16), auto_close=False
+    )[0]
+    assert result.position_id == position.position_id
+    assert result.action == "MARKED"
+    assert service.status().open_positions[0].current_debit == 0.85

@@ -52,7 +52,7 @@ def test_filter_diagnostics_identify_delta_and_liquidity_bottlenecks():
     assert diagnostics.filter_rejections["volume_below_minimum"] == 1
 
 
-def test_hedge_filter_ignores_delta_and_short_leg_minimum_bid():
+def test_hedge_filter_ignores_delta_short_bid_and_daily_volume():
     chain = OptionChain(
         underlying_symbol="SPY",
         underlying_price=700,
@@ -65,9 +65,54 @@ def test_hedge_filter_ignores_delta_and_short_leg_minimum_bid():
         chain, PutSpreadConfig()
     )
 
+    assert [item.strike for item in hedges] == [680, 675]
+    assert diagnostics.eligible_hedge_puts == 2
+    assert "volume_below_minimum" not in diagnostics.hedge_filter_rejections
+
+
+def test_hedge_filter_uses_reduced_open_interest_floor():
+    chain = OptionChain(
+        underlying_symbol="SPY",
+        underlying_price=700,
+        contracts=[contract(680, open_interest=25), contract(675, open_interest=24)],
+    )
+    hedges, diagnostics = OptionChainFilter().filter_hedge_puts_with_diagnostics(
+        chain, PutSpreadConfig()
+    )
+
     assert [item.strike for item in hedges] == [680]
-    assert diagnostics.eligible_hedge_puts == 1
-    assert diagnostics.hedge_filter_rejections["volume_below_minimum"] == 1
+    assert diagnostics.hedge_filter_rejections["open_interest_below_minimum"] == 1
+
+
+def test_off_hours_policy_can_skip_short_leg_volume_gate():
+    chain = OptionChain(
+        underlying_symbol="SPY",
+        underlying_price=700,
+        contracts=[contract(680, volume=0)],
+    )
+    eligible, diagnostics = OptionChainFilter().filter_puts_with_diagnostics(
+        chain, PutSpreadConfig(enforce_minimum_volume=False)
+    )
+
+    assert [item.strike for item in eligible] == [680]
+    assert diagnostics.minimum_volume_enforced is False
+
+
+def test_short_quote_width_is_relative_to_option_midpoint():
+    chain = OptionChain(
+        underlying_symbol="SPY",
+        underlying_price=700,
+        contracts=[
+            contract(680, bid=2.00, ask=2.40),
+            contract(675, bid=1.00, ask=1.40),
+        ],
+    )
+    eligible, diagnostics = OptionChainFilter().filter_puts_with_diagnostics(
+        chain, PutSpreadConfig()
+    )
+
+    assert [item.strike for item in eligible] == [680]
+    assert diagnostics.filter_rejections["relative_bid_ask_spread_too_wide"] == 1
 
 
 def test_builder_diagnostics_identify_width_bottleneck():

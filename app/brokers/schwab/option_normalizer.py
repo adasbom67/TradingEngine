@@ -50,6 +50,8 @@ def normalize_schwab_option(
         days_to_expiration=_to_int(
             raw_contract.get("daysToExpiration")
         ),
+        implied_volatility=_to_optional_float(raw_contract.get("volatility")),
+        quote_time=_to_optional_datetime(raw_contract.get("quoteTimeInLong")),
     )
 
 
@@ -125,3 +127,18 @@ def _to_int(value: Any, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _to_optional_datetime(value: Any) -> datetime | None:
+    if value in (None, ""):
+        return None
+    try:
+        timestamp = float(value)
+    except (TypeError, ValueError):
+        return None
+    if timestamp > 10_000_000_000:
+        timestamp /= 1000
+    try:
+        return datetime.fromtimestamp(timestamp).astimezone()
+    except (OverflowError, OSError, ValueError):
+        return None

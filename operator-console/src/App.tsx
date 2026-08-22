@@ -8,10 +8,10 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { DashboardData, Health, Page } from "./types";
+import type { CriticalEventAlert, CriticalEventMonitorStatus, DashboardData, Health, Page } from "./types";
 import { Dashboard } from "./pages/Dashboard";
 import { Backtesting } from "./pages/Backtesting";
-import { Recommendations } from "./pages/Recommendations";
+import { RecommendationsWorkspace, type RecommendationStrategyView } from "./pages/RecommendationsWorkspace";
 import { PaperTrading } from "./pages/PaperTrading";
 import { ComingSoon } from "./components/common/ComingSoon";
 import { apiUrl } from "./api/client";
@@ -34,6 +34,8 @@ export function App() {
   const [version, setVersion] = useState("…");
   const [page, setPage] = useState<Page>("Dashboard");
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [criticalAlert, setCriticalAlert] = useState<CriticalEventAlert | null>(null);
+  const [recommendationStrategy, setRecommendationStrategy] = useState<RecommendationStrategyView>("CREDIT_SPREADS");
 
   useEffect(() => {
     const refresh = () => {
@@ -55,6 +57,24 @@ export function App() {
 
     refresh();
     const timer = window.setInterval(refresh, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let lastAlertId = window.sessionStorage.getItem("critical-event-last-alert");
+    const refresh = () => fetch(apiUrl("/api/critical-events/monitor"))
+      .then((response) => response.json())
+      .then((status: CriticalEventMonitorStatus) => {
+        const newest = status.alerts.length ? status.alerts[status.alerts.length - 1] : undefined;
+        if (newest && newest.id !== lastAlertId) {
+          lastAlertId = newest.id;
+          window.sessionStorage.setItem("critical-event-last-alert", newest.id);
+          setCriticalAlert(newest);
+          playCriticalAlert();
+        }
+      }).catch(() => undefined);
+    refresh();
+    const timer = window.setInterval(refresh, 15000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -108,13 +128,25 @@ export function App() {
         ) : page === "Backtesting" ? (
           <Backtesting />
         ) : page === "Recommendations" ? (
-          <Recommendations />
+          <RecommendationsWorkspace activeStrategy={recommendationStrategy} onStrategyChange={setRecommendationStrategy} />
         ) : page === "Paper Trading" ? (
           <PaperTrading />
         ) : (
           <ComingSoon page={page} />
         )}
       </main>
+      {criticalAlert && <div className="global-critical-alert" role="alert"><div><p className="eyebrow">CONFIRMED CRITICAL EVENT</p><strong>{criticalAlert.symbol} · {criticalAlert.score}/10</strong><span>{criticalAlert.option.expiration} · ${criticalAlert.option.strike.toFixed(0)} ATM straddle</span></div><button type="button" onClick={() => { setPage("Recommendations"); setRecommendationStrategy("LONG_STRADDLE"); setCriticalAlert(null); }}>Review</button><button type="button" onClick={() => setCriticalAlert(null)}>Dismiss</button></div>}
     </div>
   );
+}
+
+function playCriticalAlert() {
+  const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) return;
+  const context = new AudioContextClass();
+  [0, .22, .44].forEach((delay) => {
+    const oscillator = context.createOscillator(); const gain = context.createGain();
+    oscillator.frequency.value = 880; gain.gain.setValueAtTime(.2, context.currentTime + delay); gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + delay + .16);
+    oscillator.connect(gain); gain.connect(context.destination); oscillator.start(context.currentTime + delay); oscillator.stop(context.currentTime + delay + .16);
+  });
 }

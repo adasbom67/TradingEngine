@@ -60,17 +60,22 @@ class PaperPositionManager:
         auto_close: bool,
     ) -> PaperManagementResult:
         try:
-            raw = self._market_data.get_put_option_chain(
+            chain_method = (
+                self._market_data.get_call_option_chain
+                if position.strategy_type == "BEAR_CALL"
+                else self._market_data.get_put_option_chain
+            )
+            raw = chain_method(
                 position.symbol,
                 from_date=position.expiration,
                 to_date=position.expiration,
             )
             chain = self._adapter.to_option_chain(raw, requested_symbol=position.symbol)
             short = self._find_contract(
-                chain.contracts, position.expiration, position.short_strike
+                chain.contracts, position.expiration, position.short_strike, position.strategy_type
             )
             long = self._find_contract(
-                chain.contracts, position.expiration, position.long_strike
+                chain.contracts, position.expiration, position.long_strike, position.strategy_type
             )
         except Exception as exc:
             return PaperManagementResult(
@@ -146,10 +151,11 @@ class PaperPositionManager:
         )
 
     @staticmethod
-    def _find_contract(contracts, expiration: date, strike: float):
+    def _find_contract(contracts, expiration: date, strike: float, strategy_type: str = "BULL_PUT"):
+        option_type = "CALL" if strategy_type == "BEAR_CALL" else "PUT"
         for contract in contracts:
             if (
-                contract.option_type.upper() == "PUT"
+                contract.option_type.upper() == option_type
                 and contract.expiration_date == expiration
                 and abs(contract.strike - strike) < 1e-9
             ):

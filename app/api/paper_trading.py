@@ -41,6 +41,7 @@ class PaperOpenPositionRequest(BaseModel):
     source_scan_reference: str | None = None
     selected_pricing_method: str | None = None
     quote_audit_status: str | None = None
+    strategy_type: Literal["BULL_PUT", "BEAR_CALL"] = "BULL_PUT"
 
 
 class PaperMarkRequest(BaseModel):
@@ -147,6 +148,7 @@ def create_paper_trading_router(
                 source_scan_reference=request.source_scan_reference,
                 selected_pricing_method=request.selected_pricing_method,
                 quote_audit_status=request.quote_audit_status,
+                strategy_type=request.strategy_type,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

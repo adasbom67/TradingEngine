@@ -30,6 +30,7 @@ class PaperPosition:
     selected_pricing_method: str | None = None
     quote_audit_status: str | None = None
     experimental: bool = False
+    strategy_type: str = "BULL_PUT"
 
     @property
     def is_open(self) -> bool:
@@ -37,7 +38,7 @@ class PaperPosition:
 
     @property
     def width(self) -> float:
-        return self.short_strike - self.long_strike
+        return abs(self.short_strike - self.long_strike)
 
     @property
     def maximum_risk(self) -> float:
@@ -184,6 +185,14 @@ class PaperAccount:
     def has_open_symbol(self, symbol: str) -> bool:
         normalized = symbol.strip().upper()
         return any(position.symbol == normalized for position in self.open_positions)
+
+    def has_open_strategy(self, symbol: str, strategy_type: str) -> bool:
+        normalized = symbol.strip().upper()
+        strategy = strategy_type.strip().upper()
+        return any(
+            position.symbol == normalized and position.strategy_type == strategy
+            for position in self.open_positions
+        )
 
     def to_dict(self) -> dict:
         return {

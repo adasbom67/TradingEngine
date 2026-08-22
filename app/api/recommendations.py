@@ -10,9 +10,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.brokers.schwab_auth import create_schwab_client
 from app.brokers.schwab_market_data import SchwabMarketDataClient
-from app.config.strategy_config import DEFAULT_STRATEGIES
+from app.config.strategy_config import BearCallSpreadConfig, DEFAULT_STRATEGIES
 from app.evaluation.default_pipeline import create_default_candidate_pipeline
 from app.indicators.market_analysis import MarketAnalysisBuilder
+from app.market_session import recommendation_market_session
 from app.scanners.live_candidate_scanner import LiveCandidateScanner
 
 
@@ -85,6 +86,9 @@ class RecommendationConstraints(BaseModel):
 
 class RecommendationRequest(BaseModel):
     symbols: list[str] = Field(min_length=1, max_length=20)
+    strategies: list[Literal["BULL_PUT", "BEAR_CALL"]] = Field(
+        default_factory=lambda: ["BULL_PUT"], min_length=1, max_length=2
+    )
     constraints: RecommendationConstraints = Field(default_factory=RecommendationConstraints)
 
     @field_validator("symbols")
@@ -99,11 +103,16 @@ class RecommendationRequest(BaseModel):
             raise ValueError("At least one valid symbol is required.")
         return normalized
 
+    @field_validator("strategies")
+    @classmethod
+    def normalize_strategies(cls, values: list[str]) -> list[str]:
+        return list(dict.fromkeys(values))
 
-def _quote_payload(short_put: Any, long_put: Any, scoring_credit: float) -> dict[str, Any]:
-    short_midpoint = round((short_put.bid + short_put.ask) / 2, 2)
-    long_midpoint = round((long_put.bid + long_put.ask) / 2, 2)
-    natural_credit = round(max(short_put.bid - long_put.ask, 0.0), 2)
+
+def _quote_payload(short_leg: Any, long_leg: Any, scoring_credit: float) -> dict[str, Any]:
+    short_midpoint = round((short_leg.bid + short_leg.ask) / 2, 2)
+    long_midpoint = round((long_leg.bid + long_leg.ask) / 2, 2)
+    natural_credit = round(max(short_leg.bid - long_leg.ask, 0.0), 2)
     midpoint_credit = round(max(short_midpoint - long_midpoint, 0.0), 2)
     scoring_credit = round(scoring_credit, 2)
 
@@ -117,16 +126,16 @@ def _quote_payload(short_put: Any, long_put: Any, scoring_credit: float) -> dict
     )
 
     return {
-        "short_bid": short_put.bid,
-        "short_ask": short_put.ask,
+        "short_bid": short_leg.bid,
+        "short_ask": short_leg.ask,
         "short_midpoint": short_midpoint,
-        "short_volume": short_put.volume,
-        "short_open_interest": short_put.open_interest,
-        "long_bid": long_put.bid,
-        "long_ask": long_put.ask,
+        "short_volume": short_leg.volume,
+        "short_open_interest": short_leg.open_interest,
+        "long_bid": long_leg.bid,
+        "long_ask": long_leg.ask,
         "long_midpoint": long_midpoint,
-        "long_volume": long_put.volume,
-        "long_open_interest": long_put.open_interest,
+        "long_volume": long_leg.volume,
+        "long_open_interest": long_leg.open_interest,
         "natural_credit": natural_credit,
         "midpoint_credit": midpoint_credit,
         "conservative_credit": natural_credit,
@@ -147,27 +156,31 @@ def _quote_payload(short_put: Any, long_put: Any, scoring_credit: float) -> dict
 
 def _candidate_payload(symbol: str, candidate: Any) -> dict[str, Any]:
     spread = candidate.spread
-    short_put = spread.short_put
-    long_put = spread.long_put
+    short_leg = spread.short_leg
+    long_leg = spread.long_leg
 
-    short_delta = short_put.delta
-    long_delta = long_put.delta
+    short_delta = short_leg.delta
+    long_delta = long_leg.delta
     net_position_delta = None
     if short_delta is not None and long_delta is not None:
         net_position_delta = (-short_delta) + long_delta
 
-    width = abs(short_put.strike - long_put.strike)
-    quote = _quote_payload(short_put, long_put, spread.credit)
+    width = spread.width
+    quote = _quote_payload(short_leg, long_leg, spread.credit)
 
     return {
         "symbol": symbol,
+        "strategy_type": spread.strategy_type,
+        "strategy_name": spread.strategy_name,
+        "option_type": spread.option_type,
+        "direction": spread.direction,
         "rank": candidate.rank,
         "decision": candidate.decision,
         "score": candidate.score,
-        "expiration": short_put.expiration_date.isoformat(),
-        "dte": short_put.days_to_expiration,
-        "short_strike": short_put.strike,
-        "long_strike": long_put.strike,
+        "expiration": short_leg.expiration_date.isoformat(),
+        "dte": short_leg.days_to_expiration,
+        "short_strike": short_leg.strike,
+        "long_strike": long_leg.strike,
         "spread_width": width,
         "short_delta": short_delta,
         "long_delta": long_delta,
@@ -304,8 +317,15 @@ def _rejection_reasons(
     return reasons
 
 
-def _strategy_for_constraints(constraints: RecommendationConstraints):
-    strategy = DEFAULT_STRATEGIES["Balanced"]
+def _strategy_for_constraints(
+    constraints: RecommendationConstraints,
+    strategy_type: str = "BULL_PUT",
+):
+    strategy = (
+        BearCallSpreadConfig()
+        if strategy_type == "BEAR_CALL"
+        else DEFAULT_STRATEGIES["Balanced"]
+    )
     changes: dict[str, Any] = {}
 
     # Only universe and trend controls are applied before candidate creation.
@@ -314,19 +334,23 @@ def _strategy_for_constraints(constraints: RecommendationConstraints):
     mappings = {
         "minimum_dte": constraints.minimum_dte,
         "maximum_dte": constraints.maximum_dte,
-        "require_20_sma_above_200_sma": constraints.require_20_sma_above_200_sma,
-        "require_price_above_200_sma": constraints.require_price_above_200_sma,
     }
+    if strategy_type == "BULL_PUT":
+        mappings.update({
+            "require_20_sma_above_200_sma": constraints.require_20_sma_above_200_sma,
+            "require_price_above_200_sma": constraints.require_price_above_200_sma,
+        })
     for field_name, value in mappings.items():
         if value is not None:
             changes[field_name] = value
 
     if constraints.allowed_spread_widths:
         changes["allowed_spread_widths"] = tuple(constraints.allowed_spread_widths)
-    if constraints.price_vs_20_sma == "ABOVE":
-        changes["require_price_below_20_sma"] = False
-    elif constraints.price_vs_20_sma == "BELOW":
-        changes["require_price_below_20_sma"] = True
+    if strategy_type == "BULL_PUT":
+        if constraints.price_vs_20_sma == "ABOVE":
+            changes["require_price_below_20_sma"] = False
+        elif constraints.price_vs_20_sma == "BELOW":
+            changes["require_price_below_20_sma"] = True
 
     configured = replace(strategy, **changes)
     configured.validate()
@@ -424,94 +448,129 @@ def _scan_outcome(evaluated: int, included: int, rejected: int, failed: int) -> 
 
 def run_recommendation_scan(request: RecommendationRequest) -> dict[str, Any]:
     started = perf_counter()
+    market_session = recommendation_market_session()
     market_data = SchwabMarketDataClient(create_schwab_client())
-    scanner = LiveCandidateScanner(
-        market_data,
-        create_default_candidate_pipeline(),
-        market_analysis=MarketAnalysisBuilder(),
-    )
-    strategy = _strategy_for_constraints(request.constraints)
+    scanners = {
+        strategy_type: LiveCandidateScanner(
+            market_data,
+            create_default_candidate_pipeline(strategy_type),
+            market_analysis=MarketAnalysisBuilder(),
+        )
+        for strategy_type in request.strategies
+    }
+    configurations = {
+        strategy_type: replace(
+            _strategy_for_constraints(request.constraints, strategy_type),
+            enforce_minimum_volume=market_session["is_regular_hours"],
+        )
+        for strategy_type in request.strategies
+    }
 
     included: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
 
     for symbol in request.symbols:
-        try:
-            scanned, pipeline_diagnostics = scanner.scan_live_with_diagnostics(
-                symbol=symbol,
-                config=strategy,
+        for strategy_type in request.strategies:
+            strategy_name = (
+                "Bear Call Credit Spread"
+                if strategy_type == "BEAR_CALL"
+                else "Bull Put Credit Spread"
             )
-            symbol_candidates = [_candidate_payload(symbol, item) for item in scanned]
-            accepted_for_symbol: list[dict[str, Any]] = []
-
-            for candidate in symbol_candidates:
-                reasons = _rejection_reasons(candidate, request.constraints)
-                candidate["selected_pricing_method"] = request.constraints.pricing_method
-                candidate["selected_credit"] = _selected_credit(
-                    candidate, request.constraints.pricing_method
+            try:
+                scanned, pipeline_diagnostics = scanners[
+                    strategy_type
+                ].scan_live_with_diagnostics(
+                    symbol=symbol,
+                    config=configurations[strategy_type],
                 )
-                candidate["selected_credit_per_contract"] = candidate["selected_credit"] * 100
-                if reasons:
-                    rejected.append({
-                        "symbol": symbol,
-                        "expiration": candidate["expiration"],
-                        "short_strike": candidate["short_strike"],
-                        "long_strike": candidate["long_strike"],
-                        "reasons": reasons,
-                    })
-                else:
-                    accepted_for_symbol.append(candidate)
-
-            accepted_for_symbol.sort(
-                key=lambda item: (item["decision"] != "TRADE", -item["score"])
-            )
-            if request.constraints.maximum_results_per_symbol is not None:
-                accepted_for_symbol = accepted_for_symbol[
-                    : request.constraints.maximum_results_per_symbol
+                strategy_candidates = [
+                    _candidate_payload(symbol, item) for item in scanned
                 ]
-            included.extend(accepted_for_symbol)
-
-            pipeline_payload = pipeline_diagnostics.to_dict()
-            diagnostics.append({
-                "symbol": symbol,
-                "status": "OK",
-                "evaluated_count": len(symbol_candidates),
-                "included_count": len(accepted_for_symbol),
-                "rejected_count": len(symbol_candidates) - len(accepted_for_symbol),
-                "pipeline": pipeline_payload,
-                "message": (
-                    f"{len(accepted_for_symbol)} candidate(s) met the active constraints."
-                    if accepted_for_symbol
-                    else (
-                        f"Pipeline stopped at {pipeline_payload['first_zero_stage']}."
-                        if not symbol_candidates and pipeline_payload["first_zero_stage"]
-                        else "No candidates met all active constraints."
+                accepted: list[dict[str, Any]] = []
+                for candidate in strategy_candidates:
+                    reasons = _rejection_reasons(candidate, request.constraints)
+                    candidate["selected_pricing_method"] = request.constraints.pricing_method
+                    candidate["selected_credit"] = _selected_credit(
+                        candidate, request.constraints.pricing_method
                     )
-                ),
-            })
-        except Exception as exc:
-            diagnostics.append({
-                "symbol": symbol,
-                "status": "ERROR",
-                "evaluated_count": 0,
-                "included_count": 0,
-                "rejected_count": 0,
-                "pipeline": None,
-                "message": str(exc),
-            })
+                    candidate["selected_credit_per_contract"] = (
+                        candidate["selected_credit"] * 100
+                    )
+                    if reasons:
+                        rejected.append({
+                            "symbol": symbol,
+                            "strategy_type": strategy_type,
+                            "strategy_name": strategy_name,
+                            "option_type": candidate["option_type"],
+                            "expiration": candidate["expiration"],
+                            "short_strike": candidate["short_strike"],
+                            "long_strike": candidate["long_strike"],
+                            "reasons": reasons,
+                        })
+                    else:
+                        accepted.append(candidate)
+
+                accepted.sort(
+                    key=lambda item: (item["decision"] != "TRADE", -item["score"])
+                )
+                if request.constraints.maximum_results_per_symbol is not None:
+                    accepted = accepted[: request.constraints.maximum_results_per_symbol]
+                included.extend(accepted)
+
+                pipeline_payload = pipeline_diagnostics.to_dict()
+                diagnostics.append({
+                    "symbol": symbol,
+                    "strategy_type": strategy_type,
+                    "strategy_name": strategy_name,
+                    "status": "OK",
+                    "evaluated_count": len(strategy_candidates),
+                    "included_count": len(accepted),
+                    "rejected_count": len(strategy_candidates) - len(accepted),
+                    "pipeline": pipeline_payload,
+                    "message": (
+                        f"{len(accepted)} {strategy_name} candidate(s) met the active constraints."
+                        if accepted
+                        else (
+                            f"{strategy_name} pipeline stopped at {pipeline_payload['first_zero_stage']}."
+                            if not strategy_candidates and pipeline_payload["first_zero_stage"]
+                            else f"No {strategy_name} candidates met all active constraints."
+                        )
+                    ),
+                })
+            except Exception as exc:
+                diagnostics.append({
+                    "symbol": symbol,
+                    "strategy_type": strategy_type,
+                    "strategy_name": strategy_name,
+                    "status": "ERROR",
+                    "evaluated_count": 0,
+                    "included_count": 0,
+                    "rejected_count": 0,
+                    "pipeline": None,
+                    "message": str(exc),
+                })
 
     included.sort(key=lambda item: (item["decision"] != "TRADE", -item["score"]))
     evaluated_count = sum(item["evaluated_count"] for item in diagnostics)
-    failed_symbols = sum(item["status"] == "ERROR" for item in diagnostics)
-    successful_symbols = len(diagnostics) - failed_symbols
+    failed_scan_units = sum(item["status"] == "ERROR" for item in diagnostics)
+    failed_symbols = sum(
+        all(
+            item["status"] == "ERROR"
+            for item in diagnostics
+            if item["symbol"] == symbol
+        )
+        for symbol in request.symbols
+    )
+    successful_symbols = len(request.symbols) - failed_symbols
     rejection_analysis = _rejection_analysis(rejected)
     elapsed_ms = round((perf_counter() - started) * 1000)
-    outcome = _scan_outcome(evaluated_count, len(included), len(rejected), failed_symbols)
+    outcome = _scan_outcome(evaluated_count, len(included), len(rejected), failed_scan_units)
     pipeline_fields = [
-        "total_contracts", "total_puts", "expiration_count",
+        "total_contracts", "total_puts", "total_calls", "expiration_count",
         "price_history_bars", "filter_input_puts", "eligible_puts",
-        "hedge_input_puts", "eligible_hedge_puts",
+        "filter_input_calls", "eligible_calls", "hedge_input_puts",
+        "eligible_hedge_puts", "hedge_input_calls", "eligible_hedge_calls",
         "pair_attempts", "same_expiration_pairs", "ordered_strike_pairs",
         "allowed_width_pairs", "minimum_credit_pairs", "valid_credit_pairs",
         "risk_approved_pairs", "candidates_built", "candidates_evaluated",
@@ -543,6 +602,8 @@ def run_recommendation_scan(request: RecommendationRequest) -> dict[str, Any]:
     return {
         "scanned_at": datetime.now(timezone.utc).isoformat(),
         "symbols": request.symbols,
+        "strategies": request.strategies,
+        "market_session": market_session,
         "constraints": request.constraints.model_dump(),
         "candidates": included,
         "rejected_candidates": rejected,
@@ -564,6 +625,8 @@ def run_recommendation_scan(request: RecommendationRequest) -> dict[str, Any]:
             "symbols_requested": len(request.symbols),
             "symbols_succeeded": successful_symbols,
             "symbols_failed": failed_symbols,
+            "scan_units_requested": len(request.symbols) * len(request.strategies),
+            "scan_units_failed": failed_scan_units,
             "elapsed_ms": elapsed_ms,
             "outcome": outcome,
             "trade_count": sum(item["decision"] == "TRADE" for item in included),
@@ -574,9 +637,9 @@ def run_recommendation_scan(request: RecommendationRequest) -> dict[str, Any]:
         "constraint_impact": rejection_analysis[:5],
         "what_if_hints": _what_if_hints(request.constraints, rejection_analysis),
         "diagnostics_disclosure": (
-            "Evaluated count represents candidates returned by the existing Balanced "
-            "strategy pipeline. The current pipeline does not expose raw option-contract "
-            "or pre-strategy spread-generation counts, so those figures are not inferred."
+            "Bull put and bear call pipelines are evaluated independently. A failure or "
+            "rejection in one direction does not automatically qualify the other. "
+            + market_session["message"]
         ),
         "execution_mode": "READ_ONLY",
         "pricing_disclosure": (

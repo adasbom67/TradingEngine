@@ -64,7 +64,13 @@ class LiveCandidateScanner:
             raise ValueError("Price snapshot symbol does not match scan symbol.")
 
         reference_date = as_of or date.today()
-        raw = self._market_data.get_put_option_chain(
+        strategy_type = getattr(self._pipeline, "strategy_type", "BULL_PUT")
+        chain_method = (
+            self._market_data.get_call_option_chain
+            if strategy_type == "BEAR_CALL"
+            else self._market_data.get_put_option_chain
+        )
+        raw = chain_method(
             normalized_symbol,
             from_date=reference_date + timedelta(days=config.minimum_dte),
             to_date=reference_date + timedelta(days=config.maximum_dte),
@@ -144,11 +150,11 @@ class LiveCandidateScanner:
             price_history,
             config,
         )
-        diagnostics = PipelineDiagnostics()
-        try:
-            diagnostics.price_history_bars = len(price_history)
-        except TypeError:
-            diagnostics.price_history_bars = 0
+        diagnostics = PipelineDiagnostics(
+            strategy_type=getattr(self._pipeline, "strategy_type", "BULL_PUT")
+        )
+        candles = price_history.get("candles", [])
+        diagnostics.price_history_bars = len(candles) if isinstance(candles, list) else 0
 
         return self.scan_with_diagnostics(
             symbol=normalized_symbol,

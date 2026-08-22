@@ -21,6 +21,15 @@ def test_market_data_client_requests_put_chain():
     assert fake.calls[0][1]["strike_count"]==20
     assert fake.calls[0][1]["include_underlying_quote"] is True
 
+
+def test_market_data_client_requests_call_chain():
+    raw = {"symbol": "SPY", "underlyingPrice": 605.0}
+    fake = FakeSchwabClient(FakeResponse(raw))
+    result = SchwabMarketDataClient(fake).get_call_option_chain("spy", strike_count=20)
+    assert result == raw
+    assert fake.calls[0][0] == "SPY"
+    assert fake.calls[0][1]["contract_type"].value == "CALL"
+
 def test_market_data_client_raises_clear_error():
     fake=FakeSchwabClient(FakeResponse({"error":"bad"},400,"bad request"))
     with pytest.raises(SchwabMarketDataError,match="SPY"):
@@ -32,6 +41,10 @@ class FakePriceHistoryClient:
         self.calls = []
 
     def get_price_history_every_day(self, symbol, **kwargs):
+        self.calls.append((symbol, kwargs))
+        return self.response
+
+    def get_price_history_every_fifteen_minutes(self, symbol, **kwargs):
         self.calls.append((symbol, kwargs))
         return self.response
 
@@ -57,3 +70,22 @@ def test_daily_history_rejects_empty_candles():
 
     with pytest.raises(SchwabMarketDataError, match="no daily candles"):
         SchwabMarketDataClient(fake).get_daily_price_history("SPY")
+
+
+def test_market_data_client_requests_regular_hours_intraday_history():
+    payload = {"candles": [{"close": 100.0}]}
+    fake = FakePriceHistoryClient(FakeResponse(payload))
+
+    result = SchwabMarketDataClient(fake).get_intraday_price_history("spy", period_days=30)
+
+    assert result == payload
+    assert fake.calls[0][0] == "SPY"
+    assert fake.calls[0][1]["need_extended_hours_data"] is False
+    assert fake.calls[0][1]["need_previous_close"] is True
+
+
+def test_intraday_history_rejects_empty_candles():
+    fake = FakePriceHistoryClient(FakeResponse({"candles": []}))
+
+    with pytest.raises(SchwabMarketDataError, match="no intraday candles"):
+        SchwabMarketDataClient(fake).get_intraday_price_history("SPY")

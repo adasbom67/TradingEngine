@@ -15,8 +15,8 @@ Build a production-quality automated options trading platform that can be truste
 7. Run the Vite production build before accepting a frontend milestone.
 8. Keep paper and live execution disabled unless explicitly included in a reviewed milestone.
 9. Use GitHub `develop` for active engineering and `main` for stable releases.
-10. Update project-status documentation at the end of each milestone.
-11. Begin each session by reading this playbook, `PROJECT_STATUS.md`, and `ROADMAP.md`.
+10. Update `SYSTEM_OVERVIEW.md` and the applicable focused supplement at the end of each milestone.
+11. Begin each session by reading `SYSTEM_OVERVIEW.md`, this playbook, `../PROJECT_STATUS.md`, and `../ROADMAP.md`.
 
 ## Daily session format
 

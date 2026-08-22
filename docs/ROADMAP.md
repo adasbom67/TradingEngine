@@ -1,42 +1,5 @@
-# TradingEngine Roadmap
+# Roadmap Location
 
-## Completed
+The future-facing roadmap is maintained in [../ROADMAP.md](../ROADMAP.md).
 
-### v0.9.0 — Research Platform Baseline
-- Live Schwab market data
-- Bull put spread candidate generation and ranking
-- Recommendation constraints and profiles
-- Quote audit
-- Recommendation diagnostics
-- Pipeline validation
-- Backtesting workspace
-- React Operator Console
-- Command Center Intelligence
-- 185 passing automated tests
-
-## Current phase
-
-### v0.9.5 — Paper Trading
-- Simulated order creation and validation
-- Fill model and slippage
-- Open-position tracking
-- Profit-target and stop management
-- Expiration handling
-- Realized and unrealized P/L
-- Paper account persistence
-- Operator Console workflow
-- Full audit trail
-
-## Future phases
-
-### Portfolio & Position Intelligence
-Schwab account synchronization, balances, buying power, Greeks, exposure, concentration, position alerts, and roll/exit candidates.
-
-### Trade Compare & Position Sizing
-Candidate comparison, account-risk sizing, portfolio-aware sizing, and liquidity/event adjustments.
-
-### Live Trading Beta
-Schwab order preview, explicit confirmation, risk gates, daily loss limits, maximum exposure controls, kill switch, monitoring, and reconciliation.
-
-### Production Trading Platform
-Controlled automation, recovery, alerts, daily briefings, auditability, and reproducible GitHub releases.
+For detailed milestone gates, see [TRADING_ENGINE_COMPLETION_PLAN.md](TRADING_ENGINE_COMPLETION_PLAN.md). For the current implemented baseline, see [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md). This redirect file remains only for compatibility with older links and handoffs.

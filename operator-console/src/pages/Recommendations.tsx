@@ -7,11 +7,21 @@ import { formatDelta, money } from "../utils/format";
 import { ConstraintExplorer } from "../components/recommendations/ConstraintExplorer";
 import { apiUrl } from "../api/client";
 
+type SchwabConnection = {
+  status: "CONNECTED" | "EXPIRING" | "EXPIRED" | "DISCONNECTED" | "INVALID" | "NOT_CONFIGURED";
+  configured: boolean;
+  requires_reconnect: boolean;
+  message: string;
+  callback_url?: string;
+  refresh_expires_at?: string;
+};
+
 export function Recommendations() {
   const [symbolsText, setSymbolsText] = useState("SPY, QQQ, IWM, DIA");
   const [result, setResult] = useState<RecommendationResponse | null>(null);
   const [selected, setSelected] = useState<RecommendationCandidate | null>(null);
   const [decisionFilter, setDecisionFilter] = useState("ALL");
+  const [strategyMode, setStrategyMode] = useState("BOTH");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -40,7 +50,7 @@ export function Recommendations() {
   const [priceVs20, setPriceVs20] = useState("ANY");
   const [includeTrade, setIncludeTrade] = useState(true);
   const [includeWatch, setIncludeWatch] = useState(true);
-  const [includePass, setIncludePass] = useState(true);
+  const [includePass, setIncludePass] = useState(false);
   const [profiles, setProfiles] = useState<TradingProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState("");
   const [profileName, setProfileName] = useState("");
@@ -51,6 +61,12 @@ export function Recommendations() {
   const [historyMessage, setHistoryMessage] = useState("");
   const [paperStatus, setPaperStatus] = useState("");
   const [paperSubmitting, setPaperSubmitting] = useState(false);
+  const [schwabConnection, setSchwabConnection] = useState<SchwabConnection | null>(null);
+  const [schwabFlowOpen, setSchwabFlowOpen] = useState(false);
+  const [schwabAuthorizationUrl, setSchwabAuthorizationUrl] = useState("");
+  const [schwabRedirectUrl, setSchwabRedirectUrl] = useState("");
+  const [schwabMessage, setSchwabMessage] = useState("");
+  const [schwabBusy, setSchwabBusy] = useState(false);
 
   useEffect(() => {
     fetch(apiUrl("/api/trading-profiles"))
@@ -61,7 +77,65 @@ export function Recommendations() {
       .then((response) => response.json())
       .then((data) => setHistory(data.history ?? []))
       .catch(() => setHistory([]));
+    refreshSchwabStatus();
   }, []);
+
+  async function refreshSchwabStatus() {
+    try {
+      const response = await fetch(apiUrl("/api/schwab/status"));
+      if (!response.ok) throw new Error("Status request failed.");
+      setSchwabConnection(await response.json());
+    } catch {
+      setSchwabConnection(null);
+    }
+  }
+
+  async function beginSchwabReconnect() {
+    setSchwabBusy(true);
+    setSchwabMessage("");
+    setSchwabRedirectUrl("");
+    try {
+      const response = await fetch(apiUrl("/api/schwab/authorize"), { method: "POST" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail ?? "Could not start Schwab authorization.");
+      setSchwabAuthorizationUrl(payload.authorization_url);
+      setSchwabFlowOpen(true);
+      setSchwabMessage("Complete the Schwab login, then copy the entire callback URL from the browser address bar.");
+      window.open(payload.authorization_url, "_blank", "noopener,noreferrer");
+    } catch (caught) {
+      setSchwabMessage(caught instanceof Error ? caught.message : "Could not start Schwab authorization.");
+    } finally {
+      setSchwabBusy(false);
+    }
+  }
+
+  async function completeSchwabReconnect() {
+    if (!schwabRedirectUrl.trim()) {
+      setSchwabMessage("Paste the entire callback URL first.");
+      return;
+    }
+    setSchwabBusy(true);
+    setSchwabMessage("Securely exchanging the one-time code with Schwab…");
+    try {
+      const response = await fetch(apiUrl("/api/schwab/authorize/complete"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redirect_url: schwabRedirectUrl.trim() }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail ?? "Schwab reconnection failed.");
+      setSchwabConnection(payload);
+      setSchwabRedirectUrl("");
+      setSchwabAuthorizationUrl("");
+      setSchwabFlowOpen(false);
+      setSchwabMessage("Schwab reconnected successfully. You can run the scan now.");
+      setError("");
+    } catch (caught) {
+      setSchwabMessage(caught instanceof Error ? caught.message : "Schwab reconnection failed.");
+    } finally {
+      setSchwabBusy(false);
+    }
+  }
 
   function optionalNumber(value: string) {
     return value.trim() === "" ? null : Number(value);
@@ -114,6 +188,8 @@ export function Recommendations() {
   function applyProfile(profile: TradingProfile) {
     const c = profile.constraints ?? {};
     setSymbolsText(profile.symbols.join(", "));
+    const profileStrategies = profile.strategies ?? ["BULL_PUT"];
+    setStrategyMode(profileStrategies.length === 2 ? "BOTH" : profileStrategies[0]);
     setMinimumDte(c.minimum_dte == null ? "" : String(c.minimum_dte));
     setMaximumDte(c.maximum_dte == null ? "" : String(c.maximum_dte));
     setWidthsText(Array.isArray(c.allowed_spread_widths) ? c.allowed_spread_widths.join(", ") : "");
@@ -148,7 +224,7 @@ export function Recommendations() {
     if (!name) { setProfileMessage("Enter a profile name first."); return; }
     const response = await fetch(apiUrl("/api/trading-profiles"), {
       method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({name, symbols: currentSymbols(), constraints: currentConstraints()}),
+      body: JSON.stringify({name, symbols: currentSymbols(), strategies: strategyMode === "BOTH" ? ["BULL_PUT", "BEAR_CALL"] : [strategyMode], constraints: currentConstraints()}),
     });
     const data = await response.json();
     if (!response.ok) { setProfileMessage(data.detail ?? "Could not save profile."); return; }
@@ -201,6 +277,9 @@ export function Recommendations() {
     const data = await response.json();
     if (!response.ok) { setHistoryMessage(data.detail ?? "Could not load scan history."); return; }
     setResult(data.scan); setSelected(data.scan.candidates?.[0] ?? null);
+    if (Array.isArray(data.scan.strategies)) {
+      setStrategyMode(data.scan.strategies.length === 2 ? "BOTH" : data.scan.strategies[0]);
+    }
     setHistoryMessage(`Loaded scan from ${new Date(data.scan.scanned_at).toLocaleString()}.`);
   }
 
@@ -228,6 +307,7 @@ export function Recommendations() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             symbols,
+            strategies: strategyMode === "BOTH" ? ["BULL_PUT", "BEAR_CALL"] : [strategyMode],
             constraints,
           }),
         },
@@ -236,7 +316,19 @@ export function Recommendations() {
       if (!response.ok) {
         const detail = Array.isArray(data.detail)
           ? data.detail.map((item: { msg: string }) => item.msg).join("; ")
-          : data.detail;
+          : typeof data.detail === "object"
+            ? data.detail.message
+            : data.detail;
+        if (response.status === 401 && data.detail?.code === "SCHWAB_RECONNECT_REQUIRED") {
+          setSchwabConnection((current) => ({
+            status: "EXPIRED",
+            configured: current?.configured ?? true,
+            requires_reconnect: true,
+            callback_url: current?.callback_url,
+            message: detail || "Schwab must be reconnected.",
+          }));
+          setSchwabFlowOpen(true);
+        }
         throw new Error(detail || "Recommendation scan failed.");
       }
       setResult(data);
@@ -273,7 +365,7 @@ export function Recommendations() {
           ? "EXPERIMENTAL WATCH â€” this candidate was not approved as a TRADE."
           : "Approved TRADE recommendation.",
         "",
-        `${candidate.symbol} bull put spread`,
+        `${candidate.symbol} ${(candidate.strategy_name ?? "Bull Put Credit Spread").toLowerCase()}`,
         `Expiration: ${candidate.expiration}`,
         `Short / long strikes: ${candidate.short_strike} / ${candidate.long_strike}`,
         `Credit: $${candidate.selected_credit.toFixed(2)} per spread`,
@@ -308,6 +400,7 @@ export function Recommendations() {
           source_scan_reference: result?.history_id ?? result?.scanned_at ?? null,
           selected_pricing_method: candidate.selected_pricing_method,
           quote_audit_status: candidate.quote.audit_status,
+          strategy_type: candidate.strategy_type ?? "BULL_PUT",
         }),
       });
       const payload = await response.json();
@@ -337,6 +430,41 @@ export function Recommendations() {
 
   return (
     <div className="recommendations-workspace">
+      <article className={`card schwab-connection-card ${schwabConnection?.status.toLowerCase() ?? "unknown"}`}>
+        <div>
+          <p className="eyebrow">SCHWAB MARKET DATA</p>
+          <h3>{schwabConnection?.status === "CONNECTED" ? "Connected" : schwabConnection?.status === "EXPIRING" ? "Connected · renewal due soon" : schwabConnection ? "Reconnect required" : "Checking connection…"}</h3>
+          <p>{schwabConnection?.message ?? "Reading the locally saved connection status."}</p>
+        </div>
+        <button type="button" className="primary" disabled={schwabBusy || !schwabConnection?.configured} onClick={beginSchwabReconnect}>
+          {schwabBusy ? "Working…" : schwabConnection?.requires_reconnect ? "Reconnect Schwab" : "Renew Schwab connection"}
+        </button>
+      </article>
+
+      {(schwabFlowOpen || schwabMessage) && (
+        <article className="card schwab-reconnect-panel">
+          <div className="schwab-reconnect-heading">
+            <div><p className="eyebrow">SECURE REAUTHORIZATION</p><h3>Reconnect Schwab</h3></div>
+            {schwabFlowOpen && <button type="button" onClick={() => setSchwabFlowOpen(false)}>Close</button>}
+          </div>
+          {schwabFlowOpen && (
+            <>
+              <ol>
+                <li>Complete the Schwab login in the browser window.</li>
+                <li>At the callback page, copy the entire URL from the address bar.</li>
+                <li>Paste it below and select <strong>Finish connection</strong>.</li>
+              </ol>
+              {schwabAuthorizationUrl && <a href={schwabAuthorizationUrl} target="_blank" rel="noreferrer">Open Schwab login again</a>}
+              <label>Schwab callback URL<input type="password" autoComplete="off" value={schwabRedirectUrl} onChange={(event) => setSchwabRedirectUrl(event.target.value)} placeholder={schwabConnection?.callback_url ? `${schwabConnection.callback_url}/?code=…` : "Paste the entire callback URL"}/></label>
+              <div className="schwab-reconnect-actions">
+                <button type="button" className="primary" disabled={schwabBusy} onClick={completeSchwabReconnect}>{schwabBusy ? "Connecting…" : "Finish connection"}</button>
+                <span>The callback is sent only to the TradingEngine service running on this computer.</span>
+              </div>
+            </>
+          )}
+          {schwabMessage && <p className="schwab-message">{schwabMessage}</p>}
+        </article>
+      )}
       <article className="card profile-toolbar">
         <label>Saved profile<select value={selectedProfile} onChange={(event)=>{const name=event.target.value; setSelectedProfile(name); const profile=profiles.find((item)=>item.name===name); if(profile) applyProfile(profile);}}><option value="">None â€” current criteria</option>{profiles.map((profile)=><option key={profile.name} value={profile.name}>{profile.is_default ? "â˜… " : ""}{profile.name}</option>)}</select></label>
         <label>Profile name<input value={profileName} onChange={(event)=>setProfileName(event.target.value)} placeholder="Example: Conservative Income"/></label>
@@ -364,6 +492,14 @@ export function Recommendations() {
             />
           </label>
           <label>
+            Strategy
+            <select value={strategyMode} onChange={(event) => setStrategyMode(event.target.value)}>
+              <option value="BOTH">Bull Put + Bear Call</option>
+              <option value="BULL_PUT">Bull Put only</option>
+              <option value="BEAR_CALL">Bear Call only</option>
+            </select>
+          </label>
+          <label>
             Display decision
             <select
               value={decisionFilter}
@@ -375,7 +511,7 @@ export function Recommendations() {
               <option value="PASS">PASS</option>
             </select>
           </label>
-          <button className="primary scan-button" disabled={loading}>
+          <button className="primary scan-button" disabled={loading || Boolean(schwabConnection?.requires_reconnect)}>
             {loading ? "Scanningâ€¦" : "Run constrained scan"}
           </button>
         </article>
@@ -394,7 +530,7 @@ export function Recommendations() {
             <div className="constraint-grid">
               <label>Minimum DTE<input type="number" min="0" value={minimumDte} onChange={(e)=>setMinimumDte(e.target.value)}/></label>
               <label>Maximum DTE<input type="number" min="0" value={maximumDte} onChange={(e)=>setMaximumDte(e.target.value)}/></label>
-              <label className="span-field">Allowed spread widths<input value={widthsText} onChange={(e)=>setWidthsText(e.target.value)} placeholder="Example: 2, 3, 5, 10"/></label>
+              <label className="span-field">Allowed spread widths<input value={widthsText} onChange={(e)=>setWidthsText(e.target.value)} placeholder="Blank = Bull Put 3/5/10; Bear Call 2/3/5"/></label>
               <label>Minimum short |Delta|<input type="number" min="0" max="1" step=".01" value={minimumDelta} onChange={(e)=>setMinimumDelta(e.target.value)}/></label>
               <label>Maximum short |Delta|<input type="number" min="0" max="1" step=".01" value={maximumDelta} onChange={(e)=>setMaximumDelta(e.target.value)}/></label>
               <label>Maximum absolute net Delta<input type="number" min="0" step=".01" value={maximumNetDelta} onChange={(e)=>setMaximumNetDelta(e.target.value)}/></label>
@@ -417,9 +553,10 @@ export function Recommendations() {
             <summary>4. Risk & Liquidity</summary>
             <div className="constraint-grid">
               <label>Maximum loss / contract ($)<input type="number" min="1" value={maximumLoss} onChange={(e)=>setMaximumLoss(e.target.value)}/></label>
-              <label>Minimum open interest, each leg<input type="number" min="0" value={minimumOi} onChange={(e)=>setMinimumOi(e.target.value)}/></label>
-              <label>Minimum volume, each leg<input type="number" min="0" value={minimumVolume} onChange={(e)=>setMinimumVolume(e.target.value)}/></label>
-              <label>Maximum bid-ask spread, each leg ($)<input type="number" min="0" step=".01" value={maximumBidAsk} onChange={(e)=>setMaximumBidAsk(e.target.value)}/></label>
+              <label>Optional minimum open interest, each leg<input type="number" min="0" value={minimumOi} onChange={(e)=>setMinimumOi(e.target.value)}/></label>
+              <label>Optional minimum volume, each leg<input type="number" min="0" value={minimumVolume} onChange={(e)=>setMinimumVolume(e.target.value)}/></label>
+              <label>Optional maximum bid-ask spread, each leg ($)<input type="number" min="0" step=".01" value={maximumBidAsk} onChange={(e)=>setMaximumBidAsk(e.target.value)}/></label>
+              <p className="span-field constraint-note">Baseline liquidity: short-leg OI ≥ 100 and regular-hours volume ≥ 10; protective-leg OI ≥ 25 with no volume minimum. Quote widths are evaluated relative to each option midpoint.</p>
             </div>
           </details>
 
@@ -441,6 +578,15 @@ export function Recommendations() {
 
       {result && (
         <>
+          {result.market_session?.provisional && (
+            <article className="card provisional-scan-banner" role="status">
+              <div>
+                <p className="eyebrow">PROVISIONAL OFF-HOURS SCAN</p>
+                <h3>{result.market_session.status.replace("_", " ")}</h3>
+                <p>{result.market_session.message} Re-scan during regular market hours before acting on prices.</p>
+              </div>
+            </article>
+          )}
           <div className="recommendation-summary diagnostics-summary">
             <Metric label="Evaluated" value={String(result.summary.evaluated_count)} />
             <Metric label="Included" value={String(result.summary.candidate_count)} />
@@ -471,8 +617,8 @@ export function Recommendations() {
             <div className="pipeline-funnel">
               {[
                 ["Contracts", result.pipeline_validation.totals.total_contracts],
-                ["Puts", result.pipeline_validation.totals.total_puts],
-                ["Eligible puts", result.pipeline_validation.totals.eligible_puts],
+                ["Option legs", (result.pipeline_validation.totals.total_puts ?? 0) + (result.pipeline_validation.totals.total_calls ?? 0)],
+                ["Eligible short legs", (result.pipeline_validation.totals.eligible_puts ?? 0) + (result.pipeline_validation.totals.eligible_calls ?? 0)],
                 ["Valid widths", result.pipeline_validation.totals.allowed_width_pairs],
                 ["Credit passed", result.pipeline_validation.totals.minimum_credit_pairs],
                 ["Risk passed", result.pipeline_validation.totals.risk_approved_pairs],
@@ -507,7 +653,7 @@ export function Recommendations() {
           <div className="diagnostics-grid">
             <article className="card diagnostics-card">
               <h3>Per-symbol diagnostics</h3>
-              {result.diagnostics.map((item)=><div className="diagnostic-row" key={item.symbol}><strong>{item.symbol}</strong><span className={item.status === "ERROR" ? "diagnostic-error" : ""}>{item.status}</span><span>{item.evaluated_count} evaluated</span><span>{item.included_count} included</span><span>{item.message}</span></div>)}
+              {result.diagnostics.map((item)=><div className="diagnostic-row" key={`${item.symbol}-${item.strategy_type ?? "BULL_PUT"}`}><strong>{item.symbol}</strong><span>{item.strategy_type === "BEAR_CALL" ? "Bear Call" : "Bull Put"}</span><span className={item.status === "ERROR" ? "diagnostic-error" : ""}>{item.status}</span><span>{item.evaluated_count} evaluated</span><span>{item.included_count} included · {item.message}</span></div>)}
             </article>
             <article className="card diagnostics-card">
               <h3>Constraint impact</h3>
@@ -531,7 +677,7 @@ export function Recommendations() {
                 <table className="recommendations-table">
                   <thead>
                     <tr>
-                      <th>Rank</th><th>Symbol</th><th>Expiration</th><th>Spread</th>
+                      <th>Rank</th><th>Symbol</th><th>Strategy</th><th>Expiration</th><th>Spread</th>
                       <th>Score</th><th>Credit</th><th>POP</th><th>ROR</th>
                       <th>Risk</th><th>Audit</th><th>Decision</th>
                     </tr>
@@ -545,6 +691,7 @@ export function Recommendations() {
                       >
                         <td>{index + 1}</td>
                         <td><strong>{candidate.symbol}</strong></td>
+                        <td><span className={`strategy-chip ${(candidate.strategy_type ?? "BULL_PUT").toLowerCase()}`}>{candidate.strategy_type === "BEAR_CALL" ? "Bear Call" : "Bull Put"}</span></td>
                         <td>{candidate.expiration}<small>{candidate.dte} DTE</small></td>
                         <td>{candidate.short_strike}/{candidate.long_strike}</td>
                         <td><span className={`score-chip ${candidate.score >= 85 ? "high" : candidate.score >= 70 ? "medium" : "low"}`}>{candidate.score.toFixed(1)}</span></td>
@@ -567,7 +714,7 @@ export function Recommendations() {
               <summary>Rejected candidates ({result.rejected_candidates.length})</summary>
               {result.rejected_candidates.slice(0,50).map((candidate,index)=>(
                 <div className="rejected-row" key={`${candidate.symbol}-${index}`}>
-                  <strong>{candidate.symbol} {candidate.short_strike}/{candidate.long_strike}</strong>
+                  <strong>{candidate.symbol} {candidate.strategy_type === "BEAR_CALL" ? "Bear Call" : "Bull Put"} {candidate.short_strike}/{candidate.long_strike}</strong>
                   <span>{candidate.expiration}</span>
                   <ul>{candidate.reasons.map((reason)=><li key={reason}>{reason}</li>)}</ul>
                 </div>
@@ -579,7 +726,7 @@ export function Recommendations() {
         <aside className="trade-detail">
           {selected ? (
             <article className="card trade-detail-card">
-              <div className="trade-detail-header"><div><p className="eyebrow">{selected.market_regime || "MARKET REGIME UNKNOWN"}</p><h2>{selected.symbol} Â· Bull Put Spread</h2></div><DecisionBadge decision={selected.decision}/></div>
+              <div className="trade-detail-header"><div><p className="eyebrow">{selected.direction ?? "BULLISH"} · {selected.market_regime || "MARKET REGIME UNKNOWN"}</p><h2>{selected.symbol} · {selected.strategy_name ?? "Bull Put Credit Spread"}</h2></div><DecisionBadge decision={selected.decision}/></div>
               <div className="trade-summary-strip">
                 <div><small>Score</small><strong>{selected.score.toFixed(1)}</strong></div>
                 <div><small>Credit / contract</small><strong>${selected.selected_credit_per_contract.toFixed(0)}</strong></div>
@@ -590,9 +737,9 @@ export function Recommendations() {
               <div className="detail-grid">
                 <Detail label="Expiration" value={selected.expiration}/>
                 <Detail label="DTE" value={String(selected.dte)}/>
-                <Detail label="Short put" value={`${selected.short_strike} Â· Î” ${formatDelta(selected.short_delta)}`}/>
-                <Detail label="Long put" value={`${selected.long_strike} Â· Î” ${formatDelta(selected.long_delta)}`}/>
-                <Detail label="Net position Î”" value={formatDelta(selected.net_position_delta)}/>
+                <Detail label={`Short ${(selected.option_type ?? "PUT").toLowerCase()}`} value={`${selected.short_strike} · Δ ${formatDelta(selected.short_delta)}`}/>
+                <Detail label={`Long ${(selected.option_type ?? "PUT").toLowerCase()}`} value={`${selected.long_strike} · Δ ${formatDelta(selected.long_delta)}`}/>
+                <Detail label="Net position Δ" value={formatDelta(selected.net_position_delta)}/>
                 <Detail label="Selected credit" value={`$${selected.selected_credit.toFixed(2)}`}/>
                 <Detail label="Credit / contract" value={`$${selected.selected_credit_per_contract.toFixed(2)}`}/>
                 <Detail label="Scoring credit" value={`$${selected.quote.scoring_credit.toFixed(2)}`}/>

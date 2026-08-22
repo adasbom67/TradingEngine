@@ -5,7 +5,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -18,6 +18,9 @@ PROFILE_PATH = Path("config/trading_profiles.json")
 class TradingProfile(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     symbols: list[str] = Field(default_factory=list, max_length=20)
+    strategies: list[Literal["BULL_PUT", "BEAR_CALL"]] = Field(
+        default_factory=lambda: ["BULL_PUT"], min_length=1, max_length=2
+    )
     constraints: RecommendationConstraints = Field(
         default_factory=RecommendationConstraints
     )
@@ -117,6 +120,7 @@ class TradingProfileStore:
         normalized_new = TradingProfile(
             name=new_name,
             symbols=existing.get("symbols", []),
+            strategies=existing.get("strategies", ["BULL_PUT"]),
             constraints=existing.get("constraints", {}),
             is_default=bool(existing.get("is_default")),
         )
@@ -139,6 +143,7 @@ class TradingProfileStore:
         duplicate = TradingProfile(
             name=new_name,
             symbols=existing.get("symbols", []),
+            strategies=existing.get("strategies", ["BULL_PUT"]),
             constraints=existing.get("constraints", {}),
             is_default=False,
         )

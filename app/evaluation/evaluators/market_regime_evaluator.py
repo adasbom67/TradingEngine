@@ -18,11 +18,12 @@ class MarketRegimeEvaluator(BaseEvaluator):
         )
         context.candidate.market_regime = regime.regime.value
 
+        bearish = context.candidate.spread.direction == "BEARISH"
         score_by_regime = {
-            MarketRegimeType.BULLISH: 100.0,
+            MarketRegimeType.BULLISH: 10.0 if bearish else 100.0,
             MarketRegimeType.NEUTRAL: 65.0,
             MarketRegimeType.HIGH_VOLATILITY: 45.0,
-            MarketRegimeType.BEARISH: 10.0,
+            MarketRegimeType.BEARISH: 100.0 if bearish else 10.0,
         }
         score = score_by_regime[regime.regime]
         reasons = [
@@ -30,7 +31,9 @@ class MarketRegimeEvaluator(BaseEvaluator):
             *regime.reasons,
         ]
         warnings: list[str] = []
-        if regime.regime == MarketRegimeType.BEARISH:
+        if bearish and regime.regime == MarketRegimeType.BULLISH:
+            warnings.append("Bullish regime is unfavorable for a bearish call spread.")
+        elif not bearish and regime.regime == MarketRegimeType.BEARISH:
             warnings.append("Bearish regime is unfavorable for a bullish put spread.")
         elif regime.regime == MarketRegimeType.HIGH_VOLATILITY:
             warnings.append("High volatility increases gap and assignment risk.")

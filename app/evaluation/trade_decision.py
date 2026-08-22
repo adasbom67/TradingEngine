@@ -40,8 +40,11 @@ class TradeDecisionEngine:
             )
         if candidate.return_on_risk < config.minimum_return_on_risk:
             failures.append("Return on risk is below the configured minimum.")
-        if candidate.market_regime == "bearish":
-            failures.append("Market regime is bearish.")
+        bearish_strategy = candidate.spread.direction == "BEARISH"
+        if bearish_strategy and candidate.market_regime == "bullish":
+            failures.append("Market regime is bullish for a bearish strategy.")
+        if not bearish_strategy and candidate.market_regime == "bearish":
+            failures.append("Market regime is bearish for a bullish strategy.")
         if candidate.maximum_quantity == 0 and any(
             "Portfolio" in warning or "risk" in warning.lower()
             for warning in candidate.warnings

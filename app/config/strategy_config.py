@@ -11,6 +11,8 @@ class PutSpreadConfig:
     # Underlying trend rules
     require_price_above_200_sma: bool = True
     require_20_sma_above_200_sma: bool = True
+    require_price_below_200_sma: bool = False
+    require_20_sma_below_200_sma: bool = False
     require_price_below_20_sma: bool = False
 
     # Trend evaluation weights
@@ -30,6 +32,12 @@ class PutSpreadConfig:
     minimum_open_interest: int = 100
     minimum_volume: int = 10
     maximum_bid_ask_spread: float = 0.15
+    maximum_bid_ask_spread_percent: float = 0.25
+    minimum_quote_width_allowance: float = 0.10
+    minimum_hedge_open_interest: int = 25
+    maximum_hedge_bid_ask_spread_percent: float = 0.50
+    minimum_hedge_quote_width_allowance: float = 0.10
+    enforce_minimum_volume: bool = True
 
     # Spread construction rules
     allowed_spread_widths: tuple[float, ...] = (3.0, 5.0, 10.0)
@@ -116,6 +124,23 @@ class PutSpreadConfig:
             raise ValueError(
                 "Maximum bid-ask spread cannot be negative."
             )
+
+        if self.maximum_bid_ask_spread_percent <= 0:
+            raise ValueError("Maximum bid-ask spread percent must be greater than zero.")
+
+        if self.minimum_quote_width_allowance < 0:
+            raise ValueError("Minimum quote-width allowance cannot be negative.")
+
+        if self.minimum_hedge_open_interest < 0:
+            raise ValueError("Minimum hedge open interest cannot be negative.")
+
+        if self.maximum_hedge_bid_ask_spread_percent <= 0:
+            raise ValueError(
+                "Maximum hedge bid-ask spread percent must be greater than zero."
+            )
+
+        if self.minimum_hedge_quote_width_allowance < 0:
+            raise ValueError("Minimum hedge quote-width allowance cannot be negative.")
 
         if self.minimum_credit < 0:
             raise ValueError(
@@ -214,6 +239,17 @@ class PutSpreadConfig:
             raise ValueError(
                 "Trend evaluation weights must total 100."
             )
+
+
+@dataclass
+class BearCallSpreadConfig(PutSpreadConfig):
+    """Configuration for a bearish, risk-defined call credit spread."""
+
+    require_price_above_200_sma: bool = False
+    require_20_sma_above_200_sma: bool = False
+    require_price_below_200_sma: bool = True
+    require_20_sma_below_200_sma: bool = True
+    allowed_spread_widths: tuple[float, ...] = (2.0, 3.0, 5.0)
 
 
 DEFAULT_STRATEGIES = {

@@ -12,6 +12,7 @@ from app.models.trades.trade_candidate import TradeCandidate
 from app.risk.portfolio_constraints import PortfolioConstraintService
 from app.selection.option_chain_filter import OptionChainFilter
 from app.strategies.bull_put_spread_builder import BullPutSpreadBuilder
+from app.strategies.bear_call_spread_builder import BearCallSpreadBuilder
 
 
 class CandidatePipeline:
@@ -22,13 +23,19 @@ class CandidatePipeline:
         spread_evaluator: SpreadEvaluator,
         option_filter: OptionChainFilter | None = None,
         spread_builder: BullPutSpreadBuilder | None = None,
+        strategy_type: str = "BULL_PUT",
         ranker: CandidateRanker | None = None,
         decision_engine: TradeDecisionEngine | None = None,
         portfolio_constraints: PortfolioConstraintService | None = None,
     ) -> None:
         self._spread_evaluator = spread_evaluator
         self._option_filter = option_filter or OptionChainFilter()
-        self._spread_builder = spread_builder or BullPutSpreadBuilder()
+        self.strategy_type = strategy_type
+        self._spread_builder = spread_builder or (
+            BearCallSpreadBuilder()
+            if strategy_type == "BEAR_CALL"
+            else BullPutSpreadBuilder()
+        )
         self._ranker = ranker or CandidateRanker()
         self._decision_engine = decision_engine or TradeDecisionEngine()
         self._portfolio_constraints = (
@@ -62,20 +69,27 @@ class CandidatePipeline:
         diagnostics: PipelineDiagnostics | None = None,
     ) -> tuple[list[TradeCandidate], PipelineDiagnostics]:
         diagnostics = diagnostics or PipelineDiagnostics()
-        eligible_puts, diagnostics = self._option_filter.filter_puts_with_diagnostics(
-            chain, config, diagnostics
-        )
-        eligible_hedges, diagnostics = (
-            self._option_filter.filter_hedge_puts_with_diagnostics(
+        diagnostics.strategy_type = self.strategy_type
+        if self.strategy_type == "BEAR_CALL":
+            eligible_calls, diagnostics = self._option_filter.filter_calls_with_diagnostics(
                 chain, config, diagnostics
             )
-        )
-        candidates, diagnostics = self._spread_builder.build_with_diagnostics(
-            eligible_puts,
-            config,
-            diagnostics,
-            long_puts=eligible_hedges,
-        )
+            eligible_hedges, diagnostics = self._option_filter.filter_hedge_calls_with_diagnostics(
+                chain, config, diagnostics
+            )
+            candidates, diagnostics = self._spread_builder.build_with_diagnostics(
+                eligible_calls, config, diagnostics, long_calls=eligible_hedges
+            )
+        else:
+            eligible_puts, diagnostics = self._option_filter.filter_puts_with_diagnostics(
+                chain, config, diagnostics
+            )
+            eligible_hedges, diagnostics = self._option_filter.filter_hedge_puts_with_diagnostics(
+                chain, config, diagnostics
+            )
+            candidates, diagnostics = self._spread_builder.build_with_diagnostics(
+                eligible_puts, config, diagnostics, long_puts=eligible_hedges
+            )
 
         evaluated: list[TradeCandidate] = []
         for candidate in candidates:

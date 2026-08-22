@@ -12,6 +12,19 @@ class BullPutSpread:
     short_put: OptionContract
     long_put: OptionContract
 
+    strategy_type = "BULL_PUT"
+    strategy_name = "Bull Put Credit Spread"
+    option_type = "PUT"
+    direction = "BULLISH"
+
+    @property
+    def short_leg(self) -> OptionContract:
+        return self.short_put
+
+    @property
+    def long_leg(self) -> OptionContract:
+        return self.long_put
+
     @property
     def width(self) -> float:
         """Width of the spread."""

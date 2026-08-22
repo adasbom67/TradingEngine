@@ -1,10 +1,10 @@
-from datetime import date
+from datetime import date, datetime, timezone
 import pytest
 from app.data.schwab_option_chain_adapter import SchwabOptionChainAdapter, SchwabOptionChainFormatError
 
 
 def test_adapter_flattens_schwab_put_map():
-    payload={"symbol":"SPY","underlyingPrice":605.25,"putExpDateMap":{"2026-09-04:35":{"500.0":[{"symbol":"SPY   260904P00500000","putCall":"PUT","strikePrice":500.0,"bid":1.5,"ask":1.6,"last":1.55,"delta":-0.2,"totalVolume":125,"openInterest":2500,"daysToExpiration":35}]}}}
+    payload={"symbol":"SPY","underlyingPrice":605.25,"putExpDateMap":{"2026-09-04:35":{"500.0":[{"symbol":"SPY   260904P00500000","putCall":"PUT","strikePrice":500.0,"bid":1.5,"ask":1.6,"last":1.55,"delta":-0.2,"totalVolume":125,"openInterest":2500,"daysToExpiration":35,"volatility":21.5,"quoteTimeInLong":1789761600000}]}}}
     chain=SchwabOptionChainAdapter().to_option_chain(payload)
     assert chain.underlying_symbol=="SPY"
     assert chain.underlying_price==605.25
@@ -16,6 +16,8 @@ def test_adapter_flattens_schwab_put_map():
     assert c.delta==-0.2
     assert c.volume==125
     assert c.open_interest==2500
+    assert c.implied_volatility==21.5
+    assert c.quote_time==datetime.fromtimestamp(1789761600,tz=timezone.utc)
 
 
 def test_adapter_uses_requested_symbol_when_payload_omits_it():

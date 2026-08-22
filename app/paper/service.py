@@ -50,13 +50,20 @@ class PaperTradingService:
         source_scan_reference: str | None = None,
         selected_pricing_method: str | None = None,
         quote_audit_status: str | None = None,
+        strategy_type: str = "BULL_PUT",
     ) -> PaperPosition:
         normalized = symbol.strip().upper()
         if not normalized:
             raise ValueError("Symbol cannot be blank.")
-        if short_strike <= long_strike:
-            raise ValueError("Short strike must be above long strike.")
-        if entry_credit <= 0 or entry_credit >= short_strike - long_strike:
+        strategy = strategy_type.strip().upper()
+        if strategy not in {"BULL_PUT", "BEAR_CALL"}:
+            raise ValueError("Paper strategy must be BULL_PUT or BEAR_CALL.")
+        if strategy == "BULL_PUT" and short_strike <= long_strike:
+            raise ValueError("Short strike must be above the long strike for a bull put spread.")
+        if strategy == "BEAR_CALL" and short_strike >= long_strike:
+            raise ValueError("Bear call short strike must be below the long strike.")
+        width = abs(short_strike - long_strike)
+        if entry_credit <= 0 or entry_credit >= width:
             raise ValueError("Entry credit must be positive and less than spread width.")
         if quantity <= 0:
             raise ValueError("Quantity must be positive.")
@@ -74,8 +81,10 @@ class PaperTradingService:
             raise ValueError(f"Unsupported paper-entry decision: {decision or 'blank'}.")
 
         account = self._ledger.load()
-        if account.has_open_symbol(normalized):
-            raise ValueError(f"An open paper position already exists for {normalized}.")
+        if account.has_open_strategy(normalized, strategy):
+            raise ValueError(
+                f"An open {strategy.replace('_', ' ').lower()} paper position already exists for {normalized}."
+            )
         position = PaperPosition(
             position_id=uuid4().hex[:12],
             symbol=normalized,
@@ -98,6 +107,7 @@ class PaperTradingService:
             selected_pricing_method=selected_pricing_method,
             quote_audit_status=quote_audit_status,
             experimental=decision == "WATCH",
+            strategy_type=strategy,
         )
         account.positions.append(position)
         self._ledger.save(account)

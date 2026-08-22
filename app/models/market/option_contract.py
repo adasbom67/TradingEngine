@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 
@@ -28,3 +28,7 @@ class OptionContract:
     open_interest: int
 
     days_to_expiration: int
+
+    # Optional market-quality fields supplied by brokers that expose them.
+    implied_volatility: Optional[float] = None
+    quote_time: Optional[datetime] = None

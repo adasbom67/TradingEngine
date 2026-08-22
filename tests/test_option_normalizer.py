@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -22,6 +22,8 @@ def test_normalize_schwab_option() -> None:
         "totalVolume": 325,
         "openInterest": 2450,
         "daysToExpiration": 50,
+        "volatility": 18.75,
+        "quoteTimeInLong": 1789761600000,
     }
 
     contract = normalize_schwab_option(raw_contract)
@@ -37,6 +39,8 @@ def test_normalize_schwab_option() -> None:
     assert contract.volume == 325
     assert contract.open_interest == 2450
     assert contract.days_to_expiration == 50
+    assert contract.implied_volatility == 18.75
+    assert contract.quote_time == datetime.fromtimestamp(1789761600, tz=timezone.utc)
 
 
 def test_normalizer_handles_missing_optional_values() -> None:
@@ -58,6 +62,8 @@ def test_normalizer_handles_missing_optional_values() -> None:
     assert contract.volume == 0
     assert contract.open_interest == 0
     assert contract.days_to_expiration == 0
+    assert contract.implied_volatility is None
+    assert contract.quote_time is None
 
 
 def test_normalizer_rejects_missing_required_field() -> None:

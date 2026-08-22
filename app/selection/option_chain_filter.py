@@ -29,6 +29,7 @@ class OptionChainFilter:
                                      diagnostics: PipelineDiagnostics | None = None):
         config.validate()
         diagnostics = diagnostics or PipelineDiagnostics()
+        diagnostics.minimum_volume_enforced = config.enforce_minimum_volume
         puts = chain.puts()
         diagnostics.total_contracts = chain.contract_count()
         diagnostics.total_puts = len(puts)
@@ -78,6 +79,57 @@ class OptionChainFilter:
         eligible.sort(key=lambda c: (str(c.expiration_date), -c.strike, c.symbol))
         return eligible, diagnostics
 
+    def filter_calls_with_diagnostics(
+        self,
+        chain: OptionChain,
+        config: PutSpreadConfig,
+        diagnostics: PipelineDiagnostics | None = None,
+    ) -> tuple[list[OptionContract], PipelineDiagnostics]:
+        """Select short calls using the configured DTE, delta, and liquidity rules."""
+        config.validate()
+        diagnostics = diagnostics or PipelineDiagnostics(strategy_type="BEAR_CALL")
+        diagnostics.strategy_type = "BEAR_CALL"
+        diagnostics.minimum_volume_enforced = config.enforce_minimum_volume
+        calls = chain.calls()
+        diagnostics.total_contracts = chain.contract_count()
+        diagnostics.total_calls = len(calls)
+        diagnostics.expiration_count = len({str(c.expiration_date) for c in chain.contracts})
+        diagnostics.filter_input_calls = len(calls)
+        eligible: list[OptionContract] = []
+        for contract in calls:
+            diagnostics.increment_delta_bucket(delta_bucket(contract.delta))
+            reason = self._rejection_reason(contract, config)
+            if reason is None:
+                eligible.append(contract)
+            else:
+                diagnostics.increment_filter_rejection(reason)
+        diagnostics.eligible_calls = len(eligible)
+        eligible.sort(key=lambda c: (str(c.expiration_date), c.strike, c.symbol))
+        return eligible, diagnostics
+
+    def filter_hedge_calls_with_diagnostics(
+        self,
+        chain: OptionChain,
+        config: PutSpreadConfig,
+        diagnostics: PipelineDiagnostics | None = None,
+    ) -> tuple[list[OptionContract], PipelineDiagnostics]:
+        """Select protective long calls without applying short-leg delta or bid rules."""
+        config.validate()
+        diagnostics = diagnostics or PipelineDiagnostics(strategy_type="BEAR_CALL")
+        diagnostics.strategy_type = "BEAR_CALL"
+        calls = chain.calls()
+        diagnostics.hedge_input_calls = len(calls)
+        eligible: list[OptionContract] = []
+        for contract in calls:
+            reason = self._hedge_rejection_reason(contract, config)
+            if reason is None:
+                eligible.append(contract)
+            else:
+                diagnostics.increment_hedge_filter_rejection(reason)
+        diagnostics.eligible_hedge_calls = len(eligible)
+        eligible.sort(key=lambda c: (str(c.expiration_date), c.strike, c.symbol))
+        return eligible, diagnostics
+
     @staticmethod
     def _rejection_reason(contract: OptionContract, config: PutSpreadConfig) -> str | None:
         if not config.minimum_dte <= contract.days_to_expiration <= config.maximum_dte:
@@ -93,12 +145,16 @@ class OptionChainFilter:
             return "bid_below_minimum"
         if contract.open_interest < config.minimum_open_interest:
             return "open_interest_below_minimum"
-        if contract.volume < config.minimum_volume:
+        if config.enforce_minimum_volume and contract.volume < config.minimum_volume:
             return "volume_below_minimum"
         if contract.ask < contract.bid:
             return "invalid_bid_ask"
-        if contract.ask - contract.bid > config.maximum_bid_ask_spread:
-            return "bid_ask_spread_too_wide"
+        if contract.ask - contract.bid > OptionChainFilter._maximum_quote_width(
+            contract,
+            config.maximum_bid_ask_spread_percent,
+            config.minimum_quote_width_allowance,
+        ):
+            return "relative_bid_ask_spread_too_wide"
         return None
 
     @staticmethod
@@ -111,13 +167,24 @@ class OptionChainFilter:
             return "non_positive_ask"
         if contract.ask < contract.bid:
             return "invalid_bid_ask"
-        if contract.open_interest < config.minimum_open_interest:
+        if contract.open_interest < config.minimum_hedge_open_interest:
             return "open_interest_below_minimum"
-        if contract.volume < config.minimum_volume:
-            return "volume_below_minimum"
-        if contract.ask - contract.bid > config.maximum_bid_ask_spread:
-            return "bid_ask_spread_too_wide"
+        if contract.ask - contract.bid > OptionChainFilter._maximum_quote_width(
+            contract,
+            config.maximum_hedge_bid_ask_spread_percent,
+            config.minimum_hedge_quote_width_allowance,
+        ):
+            return "relative_bid_ask_spread_too_wide"
         return None
+
+    @staticmethod
+    def _maximum_quote_width(
+        contract: OptionContract,
+        maximum_percent: float,
+        minimum_allowance: float,
+    ) -> float:
+        midpoint = max((contract.bid + contract.ask) / 2.0, 0.01)
+        return max(minimum_allowance, midpoint * maximum_percent)
 
     @classmethod
     def _is_eligible(cls, contract: OptionContract, config: PutSpreadConfig) -> bool:

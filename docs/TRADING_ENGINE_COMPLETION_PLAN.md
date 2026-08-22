@@ -2,6 +2,10 @@
 
 Last reviewed: 2026-08-08
 
+> **Role:** Detailed delivery stages and live-trading gates.
+> **Canonical current implementation:** [SYSTEM_OVERVIEW.md](SYSTEM_OVERVIEW.md)
+> If the current-state language here becomes stale, the system overview and code take precedence.
+
 ## Product objective
 
 Build a safety-first options trading engine that takes a SPY bull put credit spread through the complete lifecycle:
@@ -103,4 +107,3 @@ The first live pilot remains restricted to approved ETFs, one position, one cont
 ## Current working milestone
 
 Milestone 1: Paper Trading Complete and Soak Ready.
-

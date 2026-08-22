@@ -25,7 +25,7 @@ tokens.json
 
 # Runtime and generated data
 logs/
-data/
+/data/
 *.log
 
 # Frontend dependencies and build output
@@ -50,5 +50,5 @@ operator-console/*.tsbuildinfo
 Thumbs.db
 
 # Local paper-trading state
-data/paper_account.json
-data/paper_account.json.tmp
+/data/paper_account.json
+/data/paper_account.json.tmp

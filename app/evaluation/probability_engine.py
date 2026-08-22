@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from app.config.strategy_config import PutSpreadConfig
 from app.models.trades.bull_put_spread import BullPutSpread
+from app.models.trades.bear_call_spread import BearCallSpread
 
 
 @dataclass(frozen=True)
@@ -26,11 +27,11 @@ class ProbabilityEngine:
 
     def evaluate(
         self,
-        spread: BullPutSpread,
+        spread: BullPutSpread | BearCallSpread,
         config: PutSpreadConfig | None = None,
     ) -> ProbabilityMetrics:
         strategy = config or PutSpreadConfig()
-        short_delta = spread.short_put.delta
+        short_delta = spread.short_leg.delta
         probability_of_loss = (
             max(0.0, min(1.0, abs(short_delta)))
             if short_delta is not None

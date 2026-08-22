@@ -15,7 +15,7 @@ class CandidateRanker:
                 -candidate.spread.risk_reward_ratio,
                 -candidate.spread.credit,
                 candidate.spread.max_loss,
-                -candidate.spread.short_put.strike,
+                -candidate.spread.short_leg.strike,
             ),
         )
 

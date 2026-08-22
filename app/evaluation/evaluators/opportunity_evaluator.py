@@ -85,23 +85,36 @@ class OpportunityEvaluator(BaseEvaluator):
     def _liquidity_score(context: EvaluationContext) -> float:
         spread = context.candidate.spread
         config = context.strategy_config
-        legs = (spread.short_put, spread.long_put)
-
         scores: list[float] = []
-        for leg in legs:
+        for is_hedge, leg in ((False, spread.short_leg), (True, spread.long_leg)):
             quote_width = max(leg.ask - leg.bid, 0.0)
+            midpoint = max((leg.bid + leg.ask) / 2.0, 0.01)
+            quote_limit = max(
+                config.minimum_hedge_quote_width_allowance
+                if is_hedge else config.minimum_quote_width_allowance,
+                midpoint * (
+                    config.maximum_hedge_bid_ask_spread_percent
+                    if is_hedge else config.maximum_bid_ask_spread_percent
+                ),
+            )
             width_score = 1.0 - min(
-                quote_width / max(config.maximum_bid_ask_spread, 0.01),
+                quote_width / quote_limit,
                 1.0,
             )
             oi_score = min(
-                leg.open_interest / max(config.minimum_open_interest, 1),
+                leg.open_interest / max(
+                    config.minimum_hedge_open_interest
+                    if is_hedge else config.minimum_open_interest,
+                    1,
+                ),
                 2.0,
             ) / 2.0
-            volume_score = min(
-                leg.volume / max(config.minimum_volume, 1),
-                2.0,
-            ) / 2.0
-            scores.append((width_score + oi_score + volume_score) / 3.0)
+            leg_scores = [width_score, oi_score]
+            if not is_hedge and config.enforce_minimum_volume:
+                leg_scores.append(min(
+                    leg.volume / max(config.minimum_volume, 1),
+                    2.0,
+                ) / 2.0)
+            scores.append(sum(leg_scores) / len(leg_scores))
 
         return sum(scores) / len(scores)

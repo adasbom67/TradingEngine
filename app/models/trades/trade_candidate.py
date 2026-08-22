@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from app.models.trades.bull_put_spread import BullPutSpread
+from app.models.trades.bear_call_spread import BearCallSpread
 
 
 @dataclass
@@ -12,7 +13,7 @@ class TradeCandidate:
     evaluation results produced by the evaluation pipeline.
     """
 
-    spread: BullPutSpread
+    spread: BullPutSpread | BearCallSpread
 
     score: float = 0.0
 

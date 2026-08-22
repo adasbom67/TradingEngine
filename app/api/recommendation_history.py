@@ -34,6 +34,7 @@ class RecommendationHistoryStore:
             "id": uuid.uuid4().hex,
             "scanned_at": scanned_at,
             "symbols": result_payload.get("symbols", []),
+            "strategies": result_payload.get("strategies", request_payload.get("strategies", ["BULL_PUT"])),
             "constraints": request_payload.get("constraints", {}),
             "summary": result_payload.get("summary", {}),
             "candidates": result_payload.get("candidates", []),
@@ -58,6 +59,7 @@ class RecommendationHistoryStore:
                 "id": entry["id"],
                 "scanned_at": entry["scanned_at"],
                 "symbols": entry.get("symbols", []),
+                "strategies": entry.get("strategies", ["BULL_PUT"]),
                 "summary": entry.get("summary", {}),
             }
             for entry in self._read()[:limit]
